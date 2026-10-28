@@ -186,7 +186,7 @@ F06 在第一期交付完整的管理和研究机制、公共能力方法与测�
 
 正式数据库基线为 MySQL 9.7.4 LTS Community；升级须在独立副本验证并保留旧数据和回退路径。新安装默认9.7.4，旧目录不得直接交给另一版本，26.10不再是目标。详细版本及兼容策略见[社区免费基线](COMMUNITY_STACK_BASELINE.md)。JSON用于扩展字段，关系、版本、金额、权限与索引用显式类型；Temporal使用Go SDK与独立持久化/可见性库和账号。
 
-Temporal 1.32.1/mysql8驱动已在MySQL9.7.4 LTS两个随机隔离库通过持久化schema1.19及visibility schema1.14的真实建表、升级和重入检查，共8次调用成功；测试库已清理。此证据只覆盖空库DDL，不代替Temporal服务、工作流历史、重启回放或存量数据迁移资格。最终切换前集中验证这些组合，不因驱动名称推断兼容。[Temporal 持久化说明](https://docs.temporal.io/temporal-service/persistence)。
+Temporal 1.32.1/mysql8驱动已在MySQL9.7.4 LTS两个随机隔离库通过持久化schema1.19及visibility schema1.14的真实建表、升级和重入检查，共8次调用成功。2026-10-28补充在全新独立数据目录及端口上运行已有业务测试，实际通过等待采用、拒绝伪造批准信号、SDK worker替换、明确采用后继续、发布与完成，临时库、账号及进程已清理。这些证据不代替MySQL/Temporal整体服务重启、崩溃恢复、旧数据迁移或正式实例切换资格；运行边界见[社区免费基线](COMMUNITY_STACK_BASELINE.md)。最终切换前集中验证相应组合，不因驱动名称推断兼容。[Temporal 持久化说明](https://docs.temporal.io/temporal-service/persistence)。
 
 RAG 保留 BGE-M3 dense 1024 维。首期采用本地受控嵌入工具进程，使用模型官方支持的 Python 推理路径；Go 仍拥有 API、权限、编排和所有业务写入，嵌入进程只接收限定文本并返回向量，不能访问业务数据库和供应商密钥。这明确覆盖此前“新版运行完全不含 Python 工具”的过度限制，不恢复 Python 业务后端。[BGE-M3 模型卡](https://huggingface.co/BAAI/bge-m3)。
 
