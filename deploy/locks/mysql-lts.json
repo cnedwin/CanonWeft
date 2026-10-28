@@ -1,0 +1,30 @@
+{
+  "version": "9.7.4",
+  "channel": "MySQL Community Server LTS GA",
+  "license": "GPL-2.0",
+  "edition": "Community",
+  "paymentRequired": false,
+  "verifiedAt": "2026-10-25",
+  "downloadPage": "https://dev.mysql.com/downloads/mysql/9.7.html",
+  "licenseSource": "https://www.mysql.com/products/community/",
+  "releaseNotes": "https://dev.mysql.com/doc/relnotes/mysql/9.7/en/news-9-7-4.html",
+  "url": "https://cdn.mysql.com/Downloads/MySQL-9.7/mysql-9.7.4-winx64.zip",
+  "archive": "mysql-9.7.4-winx64.zip",
+  "bytes": 344052123,
+  "officialMd5": "e05aaa40639d8548e0f68b7a70685a3b",
+  "observedSha256": "641bdaf01004927194c561b956f14f915a3166c9b0f9b1b5464ae63152bf4b96",
+  "sha256Provenance": "Computed locally after download; not an official published SHA-256",
+  "mysqldAuthenticode": {
+    "status": "Valid",
+    "subject": "CN=\"Oracle America, Inc.\", O=\"Oracle America, Inc.\", L=Redwood City, S=California, C=US",
+    "thumbprint": "2B1BD188256EB612578949A943DE0DDC52D1DF79"
+  },
+  "scope": "Independent Windows loopback development/test instance; existing business data is not migrated",
+  "runtimeScript": "scripts/mysql-lts-runtime.ps1",
+  "runtimeRoot": "work/runtime/mysql/9.7.4",
+  "host": "127.0.0.1",
+  "port": 13317,
+  "serverId": 90704,
+  "database": "studio_lts_test",
+  "existingDataDirectoryReuse": false
+}

@@ -1,0 +1,55 @@
+const {chromium,expect}=require('@playwright/test');
+(async()=>{
+  const [origin,task,title]=process.argv.slice(2);
+  if(!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error('isolated loopback required');
+  const browser=await chromium.launch();let page;
+  try{
+    page=await browser.newPage();page.setDefaultTimeout(10000);
+    const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.goto(origin);
+    await page.getByLabel('用户名',{exact:true}).fill('owner');
+    await page.getByLabel('密码',{exact:true}).fill('test-owner-password-123');
+    await page.getByRole('button',{name:'登录',exact:true}).click();
+    const enter=async()=>{
+      await page.getByRole('button',{name:`${title} · 继续完善世界与故事`,exact:true}).click();
+      await page.getByRole('button',{name:'规划世界、大纲与细纲',exact:true}).click();
+      await page.getByRole('button',{name:'全书与分卷安排',exact:true}).click();
+      await page.getByRole('button',{name:'编排本卷章节',exact:true}).click();
+      await page.getByRole('article',{name:'第1章安排',exact:true}).getByRole('button',{name:'完善本章细纲',exact:true}).click();
+      await page.getByRole('button',{name:'开始本章写作',exact:true}).click();
+      await page.getByRole('button',{name:'提取与编辑本章账本',exact:true}).click();
+      await expect(page.getByRole('heading',{name:'本章剧情账本',exact:true})).toBeVisible();
+    };
+    await enter();
+    await expect(page.getByLabel('章节正文',{exact:true})).toBeDisabled();
+    await page.getByRole('button',{name:'请独立 Agent 提取账本',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'本章记账助手',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:`查看任务 ${task.slice(0,6)}`,exact:true}).click();
+    await page.getByRole('button',{name:'查看账本候选',exact:true}).click();
+    await expect(page.getByRole('region',{name:'账本候选对照'})).toContainText('林舟在门外停了下来。');
+    await expect(page.getByRole('region',{name:'账本候选对照'})).toContainText('人物尚未关联已确认身份，请核对。');
+    await page.getByRole('button',{name:'将账本候选加入私人草稿',exact:true}).click();
+    await expect(page.getByLabel('记录类型',{exact:true})).toHaveValue('event');
+    await expect(page.getByLabel('正文原文证据',{exact:true})).toHaveValue('林舟在门外停了下来。');
+    await page.getByLabel('记录内容',{exact:true}).fill('林舟在门外暂时停步。');
+    await page.getByRole('button',{name:'保存私人账本',exact:true}).click();
+    await expect(page.getByText('剧情账本已保存为私人草稿，尚未写入正史或记忆。',{exact:true})).toBeVisible();
+    await page.reload();await enter();
+    await expect(page.getByLabel('记录内容',{exact:true})).toHaveValue('林舟在门外暂时停步。');
+    await expect(page.getByLabel('知情范围',{exact:true})).toHaveValue('author');
+    await page.getByRole('button',{name:'保存并提交本章独立审稿',exact:true}).click();
+    await expect(page.getByRole('region',{name:'本章联合审稿候选'})).toContainText('正文、章节依据和剧情账本');
+    await expect(page.getByLabel('记录内容',{exact:true})).toBeDisabled();
+    await page.getByRole('button',{name:'返回账本编辑',exact:true}).click();
+    await page.reload();await enter();
+    await page.getByRole('button',{name:'继续查看本章审稿',exact:true}).click();
+    await expect(page.getByRole('region',{name:'本章联合审稿候选'})).toBeVisible();
+    await page.getByRole('button',{name:'返回账本编辑',exact:true}).click();
+    await page.getByRole('button',{name:'请独立 Agent 提取账本',exact:true}).click();
+    await page.getByLabel('希望 AI 协助的内容',{exact:true}).fill('再次核对原文，不把推测当事实');
+    await page.getByRole('button',{name:'保存请求并估算费用',exact:true}).click();
+    await expect(page.getByText('本章原文与记账要求已保存，尚未调用模型。',{exact:true})).toBeVisible();
+    expect(errors).toEqual([]);
+    console.log('Actual ledger browser: chapter -> independent bookkeeper task -> quoted evidence/meaning review -> explicit private adoption -> edit -> reload -> prepare feedback. No real provider call or publication.');
+  }catch(e){console.error(await page?.locator('body').innerText());throw e;}finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

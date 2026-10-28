@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "来源标识",
+            "minLength": 1
+          },
+          "url": {
+            "type": "string",
+            "title": "原始链接",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string",
+            "title": "材料中的证据",
+            "minLength": 1
+          },
+          "fit": {
+            "type": "string",
+            "title": "适用性与限制",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "source_id",
+          "url",
+          "evidence",
+          "fit"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 100
+    },
+    "search_suggestions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "建议查询",
+        "minLength": 1
+      },
+      "maxItems": 100
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "证据缺口",
+        "minLength": 1
+      },
+      "maxItems": 100
+    }
+  },
+  "required": [
+    "candidates",
+    "search_suggestions",
+    "gaps"
+  ],
+  "additionalProperties": false
+}

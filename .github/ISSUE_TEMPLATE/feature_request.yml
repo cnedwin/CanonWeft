@@ -1,0 +1,27 @@
+name: Feature request
+description: Describe a concrete authoring or maintenance need.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the use case with synthetic examples. Do not upload API keys, real manuscripts, backups, or private logs. Check the documented scope and roadmap before proposing a change.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Who needs this, and what is difficult in the current workflow?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed outcome
+      description: Describe observable behavior and how it could be verified. Include a requirement ID if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and constraints
+      description: Note existing workarounds and any effects on data, permissions, compatibility, or model costs.

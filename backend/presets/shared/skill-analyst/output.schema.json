@@ -1,0 +1,77 @@
+{
+  "type": "object",
+  "properties": {
+    "recommendation": {
+      "type": "string",
+      "enum": [
+        "ADAPT",
+        "HOLD",
+        "REJECT"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "BLOCK",
+              "REVIEW",
+              "INFO"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "title": "证据位置",
+            "minLength": 1
+          },
+          "issue": {
+            "type": "string",
+            "title": "问题",
+            "minLength": 1
+          },
+          "resolution": {
+            "type": "string",
+            "title": "处理建议",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "severity",
+          "source",
+          "issue",
+          "resolution"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 100
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "依赖",
+        "minLength": 1
+      },
+      "maxItems": 100
+    },
+    "unverified": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "待验证项",
+        "minLength": 1
+      },
+      "maxItems": 100
+    }
+  },
+  "required": [
+    "recommendation",
+    "findings",
+    "dependencies",
+    "unverified"
+  ],
+  "additionalProperties": false
+}

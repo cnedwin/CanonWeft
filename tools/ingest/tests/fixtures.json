@@ -1,0 +1,90 @@
+{
+  "origin": "Authored in this repository; no downloaded document corpus or redistributed font files",
+  "files": [
+    {
+      "name": "blank.png",
+      "sha256": "d2b8be3b4231f3b86a70339dc3050d6d888b2f313253c6f57493a719aa536053",
+      "bytes": 2898
+    },
+    {
+      "name": "encrypted-empty-password.pdf",
+      "sha256": "2474b9eff681c3409381ac555eb21c54e5d4a7da21f6635405bb08e57425741b",
+      "bytes": 2173
+    },
+    {
+      "name": "encrypted.pdf",
+      "sha256": "04ca82e9a9466c8ec0f1954fb1a14270b10aa4444b8c83a0354e83113e39e5d9",
+      "bytes": 2173
+    },
+    {
+      "name": "mixed.pdf",
+      "sha256": "38c3d08d5420899ab6d1585944f696b6fec13f6a3da6c77b69d405c45765f94f",
+      "bytes": 24221
+    },
+    {
+      "name": "native.pdf",
+      "sha256": "285f63f5004612f10cb6fca62086b68522ecb1ccd16f336a3e3946af46f7940b",
+      "bytes": 1678
+    },
+    {
+      "name": "oversize.png",
+      "sha256": "f90b620508f4e112ddb2008c9daae8ff4d4031d630b08174e2a92750b07f7d3e",
+      "bytes": 4446
+    },
+    {
+      "name": "scan.pdf",
+      "sha256": "287a5ce5fcdf33ce56135955c16f96fdb42d40a88a8300100ab1ce325831feae",
+      "bytes": 45884
+    },
+    {
+      "name": "text.jpg",
+      "sha256": "72c51ebae7b7bb91b2cea882de259bf66dea574bcede06e8341f370d5cc4b1f7",
+      "bytes": 22250
+    },
+    {
+      "name": "text.png",
+      "sha256": "3c42db6b9cbd7f7dfef8bb9136871efd37369774a81eacc6e51ccb95f0b10fac",
+      "bytes": 19185
+    },
+    {
+      "name": "text.webp",
+      "sha256": "05044cecf9a5f3ed7d08b59db90236d068cd5ff6b907a5e8c168079af7578415",
+      "bytes": 8404
+    },
+    {
+      "name": "too-many-pages.pdf",
+      "sha256": "d3ec13bc6258321c49508d6efa4823b73db0771e21c7565bf7ba37797054d641",
+      "bytes": 32888
+    },
+    {
+      "name": "alpha-hidden.png",
+      "sha256": "558bf5462047cad64f6fad05ea5b083157f845abe810f3054ccbde6fbc0b4d70",
+      "bytes": 18618
+    },
+    {
+      "name": "alpha-hidden.webp",
+      "sha256": "922c3415de2cc157bf5d23bce27f1aeb93f8981e6ff54b0967e2e88739a75648",
+      "bytes": 5250
+    },
+    {
+      "name": "alpha-la.png",
+      "sha256": "d417a2020a0fed8f700e76c7bf0a8daded98dfef31a138914620c403190b52bc",
+      "bytes": 10317
+    },
+    {
+      "name": "alpha-palette.png",
+      "sha256": "e85d3e88dc2e111d90c795f73052a2698b5eb683e197569ac072425e9caa957a",
+      "bytes": 4141
+    },
+    {
+      "name": "alpha-visible.png",
+      "sha256": "bdfb805cb1b99e7e97cac12463d50b260b233d70e487d6802da32f5a4795e247",
+      "bytes": 12623
+    },
+    {
+      "name": "alpha-visible.webp",
+      "sha256": "05491aa6ad77ae93e0c7f900193e900e4235746f7aeef5d943705d50bcfa7da6",
+      "bytes": 5264
+    }
+  ]
+}

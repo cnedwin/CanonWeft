@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Standard GitHub-hosted runners only. No application services, credentials,
+# real model calls, external Skill execution, or uploaded artifacts are needed.
+# Passing CI does not qualify a complete installation or literary quality.
+env:
+  CI: "true"
+  STUDIO_PROVIDER_NETWORK: disabled
+
+jobs:
+  backend:
+    name: Backend (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: backend
+    env:
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Build backend packages
+        run: go build ./...
+      - name: Vet backend packages
+        run: go vet ./...
+      - name: Test service-free contracts
+        # Explicit package selection avoids treating skipped integration suites
+        # as database, Temporal, isolation-runtime, or provider qualification.
+        run: go test ./internal/domain ./internal/novel ./internal/skills ./internal/tooltrial ./presets -count=1 -timeout=5m
+
+  web:
+    name: Web (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.19.0"
+          package-manager-cache: false
+      - name: Install the locked package manager
+        run: npm ci --prefix tools/package-manager --ignore-scripts --no-audit --no-fund
+      - name: Install frozen web dependencies
+        run: node tools/package-manager/node_modules/pnpm/bin/pnpm.mjs --dir web install --frozen-lockfile --ignore-scripts
+      - name: Check Vue and TypeScript types
+        working-directory: web
+        run: node node_modules/vue-tsc/bin/vue-tsc.js --noEmit
+      - name: Build web application
+        working-directory: web
+        run: node node_modules/vite/bin/vite.js build
+
+  powershell:
+    name: PowerShell (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Parse PowerShell source without executing it
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(Get-ChildItem -LiteralPath . -File -Filter '*.ps1') + @(Get-ChildItem -LiteralPath scripts -File -Filter '*.ps1' -Recurse)
+          $failures = @()
+          foreach ($file in $files) {
+            $tokens = $null
+            $parseErrors = $null
+            $null = [Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$parseErrors)
+            foreach ($parseError in $parseErrors) {
+              $failures += '{0}:{1}: {2}' -f $file.Name, $parseError.Extent.StartLineNumber, $parseError.Message
+            }
+          }
+          if ($failures.Count -gt 0) { throw ($failures -join "`n") }
+          Write-Output "Parsed $($files.Count) PowerShell files."
+      - name: Test isolated startup entry points
+        # The existing test uses temporary fixtures and stops at the first
+        # dependency boundary; it never starts the platform or installs it.
+        run: ./scripts/test-start-entrypoints.ps1 -Case All

@@ -1,0 +1,53 @@
+CREATE TABLE IF NOT EXISTS ip_branch_deltas (
+ candidate_id CHAR(32) PRIMARY KEY,
+ project_id CHAR(32) NOT NULL, branch_id CHAR(32) NOT NULL,
+ base_revision CHAR(32) NOT NULL, parent_revision CHAR(32) NOT NULL,
+ delta_hash CHAR(64) NOT NULL, payload MEDIUMTEXT NOT NULL,
+ created_by CHAR(32) NOT NULL,
+ created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ FOREIGN KEY(candidate_id) REFERENCES ip_revisions(id),
+ FOREIGN KEY(project_id) REFERENCES projects(id),
+ FOREIGN KEY(branch_id) REFERENCES branches(id),
+ FOREIGN KEY(created_by) REFERENCES users(id),
+ INDEX(project_id,branch_id,created_at)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS semantic_review_runs (
+ id CHAR(32) PRIMARY KEY,
+ project_id CHAR(32) NOT NULL, branch_id CHAR(32) NOT NULL,
+ actor_id CHAR(32) NOT NULL, operation_id VARCHAR(120) NOT NULL,
+ request_hash CHAR(64) NOT NULL,
+ target_kind ENUM('ip_candidate','artifact_release') NOT NULL,
+ target_id CHAR(32) NOT NULL, target_hash CHAR(64) NOT NULL,
+ frozen MEDIUMTEXT NOT NULL,
+ generation_id CHAR(32) NULL,
+ state ENUM('PREPARED','QUEUED','RUNNING','UNKNOWN','COMPLETED','FAILED','BLOCKED','CANCELLED') NOT NULL DEFAULT 'PREPARED',
+ verdict ENUM('PENDING','PASS','FAIL','UNKNOWN') NOT NULL DEFAULT 'PENDING',
+ paused BOOLEAN NOT NULL DEFAULT FALSE,
+ cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
+ restored_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+ report_hash CHAR(64) NOT NULL DEFAULT '',
+ reason VARCHAR(1000) NOT NULL DEFAULT '',
+ created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ FOREIGN KEY(project_id) REFERENCES projects(id),
+ FOREIGN KEY(branch_id) REFERENCES branches(id),
+ FOREIGN KEY(actor_id) REFERENCES users(id),
+ FOREIGN KEY(generation_id) REFERENCES generation_tasks(id),
+ UNIQUE KEY(actor_id,operation_id), UNIQUE KEY(generation_id),
+ INDEX(project_id,target_kind,target_id,created_at)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS semantic_review_acceptances (
+ id CHAR(32) PRIMARY KEY,
+ project_id CHAR(32) NOT NULL,
+ target_kind ENUM('ip_candidate','artifact_release') NOT NULL,
+ target_id CHAR(32) NOT NULL, target_hash CHAR(64) NOT NULL,
+ revision BIGINT UNSIGNED NOT NULL,
+ review_id CHAR(32) NOT NULL, report_hash CHAR(64) NOT NULL,
+ actor_id CHAR(32) NOT NULL,
+ created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ FOREIGN KEY(project_id) REFERENCES projects(id),
+ FOREIGN KEY(review_id) REFERENCES semantic_review_runs(id),
+ FOREIGN KEY(actor_id) REFERENCES users(id),
+ UNIQUE KEY(target_kind,target_id,revision),
+ INDEX(project_id,review_id)
+) ENGINE=InnoDB;

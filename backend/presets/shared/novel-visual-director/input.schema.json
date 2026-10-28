@@ -1,0 +1,74 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "novel",
+    "basis",
+    "instructions",
+    "previous_brief",
+    "reference_metadata"
+  ],
+  "properties": {
+    "novel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "book_id",
+        "kind",
+        "name",
+        "source_ids",
+        "character_ids"
+      ],
+      "properties": {
+        "book_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "kind": {
+          "enum": [
+            "cover",
+            "scene"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "source_ids": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "string"
+          }
+        },
+        "character_ids": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "basis": {
+      "type": "object"
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10000
+    },
+    "previous_brief": {
+      "type": "string",
+      "maxLength": 16000
+    },
+    "reference_metadata": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

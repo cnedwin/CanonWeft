@@ -1,0 +1,11 @@
+{
+  "type":"object","additionalProperties":false,
+  "required":["book_id","resource_id","ids","notes","genre"],
+  "properties":{
+    "book_id":{"type":"string","minLength":1,"maxLength":32},
+    "resource_id":{"type":"string","minLength":1,"maxLength":32},
+    "ids":{"type":"array","minItems":1,"maxItems":100,"uniqueItems":true,"items":{"type":"string","minLength":1,"maxLength":128}},
+    "notes":{"type":"string","minLength":1,"maxLength":10000},
+    "genre":{"type":"string","maxLength":300}
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "type": "object",
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "parts": {
+            "type": "object",
+            "properties": {
+              "surname": { "type": "string", "maxLength": 200 },
+              "given_name": { "type": "string", "maxLength": 200 },
+              "courtesy_name": { "type": "string", "maxLength": 200 },
+              "art_name": { "type": "string", "maxLength": 200 },
+              "nickname": { "type": "string", "maxLength": 200 },
+              "title": { "type": "string", "maxLength": 200 },
+              "original": { "type": "string", "maxLength": 200 },
+              "transliteration": { "type": "string", "maxLength": 200 }
+            },
+            "additionalProperties": false
+          },
+          "name": {
+            "type": "string",
+            "title": "候选名字",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pronunciation": {
+            "type": "string",
+            "title": "读音/音译及不确定性",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "origin": {
+            "type": "string",
+            "enum": ["invented", "collected", "adapted"]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "title": "风格标签",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "maxItems": 100
+          },
+          "rationale": {
+            "type": "string",
+            "title": "适合角色的原因",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source_id": {
+                  "type": "string",
+                  "title": "来源标识",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "url": {
+                  "type": "string",
+                  "title": "原始网址",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "locator": {
+                  "type": "string",
+                  "title": "页码/段落/记录标识",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "evidence": {
+                  "type": "string",
+                  "title": "简短证据或结构化字段",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "captured_at": {
+                  "type": "string",
+                  "title": "材料记录的采集日期",
+                  "minLength": 1,
+                  "maxLength": 80
+                }
+              },
+              "required": [
+                "source_id",
+                "url",
+                "locator",
+                "evidence",
+                "captured_at"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 20
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "title": "重名/近音/时代/禁忌风险",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "maxItems": 100
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["unverified", "supported"]
+          }
+        },
+        "required": [
+          "name",
+          "pronunciation",
+          "origin",
+          "tags",
+          "rationale",
+          "sources",
+          "conflicts",
+          "confidence"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "origin": {
+                      "enum": ["collected", "adapted"]
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "confidence": {
+                      "const": "supported"
+                    }
+                  }
+                }
+              ]
+            },
+            "then": {
+              "properties": {
+                "sources": {
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 100
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "不足与待核实",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "实际做过的检查及范围",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    }
+  },
+  "required": ["candidates", "gaps", "checks"],
+  "additionalProperties": false
+}

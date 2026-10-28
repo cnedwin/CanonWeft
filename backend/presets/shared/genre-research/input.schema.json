@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "title": "需要研究的问题",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "genre": {
+      "type": "string",
+      "title": "题材",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "era": {
+      "type": "string",
+      "title": "故事年代",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "region": {
+      "type": "string",
+      "title": "地区/文化",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "chapter_need": {
+      "type": "string",
+      "title": "章节动作、情节或专业细节",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "materials": {
+      "type": "string",
+      "title": "实际抓取的资料与来源；未抓取写无",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "source_policy": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "来源偏好/许可/禁用来源",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    },
+    "feedback": {
+      "type": "string",
+      "maxLength": 8000
+    }
+  },
+  "required": [
+    "prompt",
+    "genre",
+    "era",
+    "region",
+    "chapter_need",
+    "materials",
+    "source_policy"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,49 @@
+{
+  "input": {
+    "novel": {
+      "book_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "cover",
+      "name": "雨夜钟楼封面",
+      "source_ids": [],
+      "character_ids": []
+    },
+    "basis": {
+      "settings_revision": 1,
+      "setup": {
+        "title": "停钟旧事",
+        "theme": "寻找与守护"
+      },
+      "characters": [],
+      "required": []
+    },
+    "instructions": "雨夜悬疑封面，留出书名位置，不要额外人物",
+    "previous_brief": "",
+    "reference_metadata": []
+  },
+  "output": {
+    "novel": {
+      "book_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "cover",
+      "name": "雨夜钟楼封面",
+      "source_ids": [],
+      "character_ids": []
+    },
+    "look": "雨夜钟楼封面",
+    "visual_brief": "以雨夜旧钟楼突出失踪悬疑，冷色调中保留一盏暖灯。",
+    "render_prompt": "竖版悬疑小说封面，远景旧钟楼与雨夜街道，窗内一盏暖灯，上方留出书名排版区域，不生成文字，不增加人物或平台标志。",
+    "preserve_features": [
+      "悬疑基调与寻找、守护的主题",
+      "无额外人物"
+    ],
+    "proposed_details": [
+      "冷色雨夜与暖灯对比"
+    ],
+    "open_questions": [
+      "暖灯属于何处可由作者后续指定"
+    ],
+    "consistency_checks": [
+      "核对标题留白与缩略图辨识度",
+      "检查是否无意添加人物、徽标或可读广告"
+    ]
+  }
+}

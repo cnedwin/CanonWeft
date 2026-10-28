@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>记忆面板交互测试</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h, ref } from "vue";
+      import MemoryPanel from "/src/features/ip/MemoryPanel.vue";
+      import "/src/style.css";
+      createApp({
+        setup() {
+          const blocked = ref(false);
+          const branchID = ref("branch-a");
+          const project = {
+            id: "project-1",
+            name: "记忆测试作品",
+            revision: 1,
+            role: "owner",
+          };
+          const actor = {
+            id: "actor-1",
+            username: "测试作者",
+            workspace_id: "workspace-1",
+            role: "owner",
+          };
+          return () =>
+            h(
+              "main",
+              { style: "max-width: 1000px;margin: 24px auto;padding: 16px" },
+              [
+                h(
+                  "button",
+                  {
+                    disabled: blocked.value,
+                    onClick: () => {
+                      branchID.value = "branch-b";
+                    },
+                  },
+                  "模拟切换分支",
+                ),
+                h(
+                  "button",
+                  {
+                    onClick: () => {
+                      branchID.value = "branch-b";
+                    },
+                  },
+                  "模拟外部切换",
+                ),
+                h(MemoryPanel, {
+                  key: branchID.value,
+                  project,
+                  actor,
+                  blocked: false,
+                  branch: {
+                    id: branchID.value,
+                    name: branchID.value,
+                    head: "canon-1",
+                    revision: 1,
+                    parent_id: "",
+                    base_revision: "",
+                    snapshot: {
+                      entities: [
+                        {
+                          id: "character-1",
+                          name: "林舟",
+                          kind: "character",
+                          aliases: [],
+                          description: "医师",
+                        },
+                      ],
+                      assertions: [],
+                    },
+                  },
+                  onBlocking: (value) => {
+                    blocked.value = value;
+                  },
+                }),
+              ],
+            );
+        },
+      }).mount("#app");
+    </script>
+  </body>
+</html>

@@ -1,0 +1,391 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "status": {
+      "const": "CANDIDATE"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "base_revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requirement_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "theme",
+              "main_arc",
+              "motivation",
+              "causality",
+              "highlight_setup",
+              "highlight_payoff"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "PRESERVED",
+              "CHANGED",
+              "MISSING",
+              "UNKNOWN"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "source_evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/anchor"
+            },
+            "minItems": 1,
+            "maxItems": 64
+          },
+          "target_evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/anchor"
+            },
+            "minItems": 0,
+            "maxItems": 512
+          },
+          "searched_target_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "minItems": 1,
+            "maxItems": 512,
+            "uniqueItems": true
+          },
+          "setup_payoff_link": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "setup_requirement_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "payoff_requirement_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "causal_explanation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8000
+                  }
+                },
+                "required": [
+                  "setup_requirement_id",
+                  "payoff_requirement_id",
+                  "causal_explanation"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repair": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          }
+        },
+        "required": [
+          "requirement_id",
+          "category",
+          "result",
+          "explanation",
+          "source_evidence",
+          "target_evidence",
+          "searched_target_ids",
+          "setup_payoff_link",
+          "repair"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "result": {
+                  "enum": [
+                    "PRESERVED",
+                    "CHANGED",
+                    "MISSING"
+                  ]
+                }
+              },
+              "required": [
+                "result"
+              ]
+            },
+            "then": {
+              "properties": {
+                "target_evidence": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/anchor"
+                  },
+                  "minItems": 1,
+                  "maxItems": 64
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "category": {
+                  "enum": [
+                    "highlight_setup",
+                    "highlight_payoff"
+                  ]
+                }
+              },
+              "required": [
+                "category"
+              ]
+            },
+            "then": {
+              "properties": {
+                "setup_payoff_link": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 512
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8000
+      },
+      "minItems": 0,
+      "maxItems": 512
+    }
+  },
+  "required": [
+    "schema",
+    "status",
+    "project_id",
+    "base_revision",
+    "scope",
+    "verdict",
+    "checks",
+    "limitations"
+  ],
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "branch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "story_time": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "known_from": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "perspective_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "visibility": {
+          "type": "string",
+          "enum": [
+            "public",
+            "restricted",
+            "private"
+          ]
+        },
+        "known_by": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "minItems": 0,
+          "maxItems": 512,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "branch_id",
+        "story_time",
+        "known_from",
+        "perspective_id",
+        "visibility",
+        "known_by"
+      ]
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "start_rune": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_rune": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        }
+      },
+      "required": [
+        "resource_id",
+        "revision",
+        "hash",
+        "start_rune",
+        "end_rune",
+        "quote"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "chapter",
+            "planning",
+            "memory",
+            "adaptation"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        }
+      },
+      "required": [
+        "resource_id",
+        "revision",
+        "hash",
+        "kind",
+        "text",
+        "scope"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "PASS"
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "items": {
+              "properties": {
+                "result": {
+                  "const": "PRESERVED"
+                }
+              }
+            }
+          },
+          "limitations": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

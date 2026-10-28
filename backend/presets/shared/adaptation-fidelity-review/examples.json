@@ -1,0 +1,386 @@
+{
+  "input": {
+    "schema": 1,
+    "project_id": "project-a",
+    "base_revision": "ip-head-1",
+    "scope": {
+      "branch_id": "branch-a",
+      "story_time": 1,
+      "known_from": 1,
+      "perspective_id": "author",
+      "visibility": "restricted",
+      "known_by": [
+        "author"
+      ]
+    },
+    "sources": [
+      {
+        "resource_id": "chapter-1",
+        "revision": "rev-1",
+        "hash": "e0bd91169947dc8df6c5685f2fd1ac160faff1b87805852682bf07292f45c670",
+        "kind": "chapter",
+        "text": "林昭决定救出妹妹，即使失去王位。她藏起钥匙，妹妹并不知道。",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        }
+      },
+      {
+        "resource_id": "plan-1",
+        "revision": "rev-1",
+        "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+        "kind": "planning",
+        "text": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        }
+      },
+      {
+        "resource_id": "comic-1",
+        "revision": "rev-1",
+        "hash": "5e597251182c8c63655c7415b4d76dc4f85392c4cca4c7638d97836e2039d0e0",
+        "kind": "adaptation",
+        "text": "林昭放弃王位，用藏起的钥匙打开牢门救出妹妹。",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        }
+      }
+    ],
+    "target_medium": "comic",
+    "target_complete": false,
+    "target_resource_ids": [
+      "comic-1"
+    ],
+    "requirements": [
+      {
+        "id": "req-1",
+        "category": "theme",
+        "description": "救人并承担王位代价",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ]
+      },
+      {
+        "id": "req-2",
+        "category": "main_arc",
+        "description": "救出妹妹的主线",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ]
+      },
+      {
+        "id": "req-3",
+        "category": "motivation",
+        "description": "主动牺牲王位的动机",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ]
+      },
+      {
+        "id": "req-4",
+        "category": "causality",
+        "description": "藏钥匙使开牢门成为可能",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ]
+      },
+      {
+        "id": "req-5",
+        "category": "highlight_setup",
+        "description": "钥匙事先藏起",
+        "source_evidence": [
+          {
+            "resource_id": "chapter-1",
+            "revision": "rev-1",
+            "hash": "e0bd91169947dc8df6c5685f2fd1ac160faff1b87805852682bf07292f45c670",
+            "start_rune": 0,
+            "end_rune": 29,
+            "quote": "林昭决定救出妹妹，即使失去王位。她藏起钥匙，妹妹并不知道。"
+          }
+        ]
+      },
+      {
+        "id": "req-6",
+        "category": "highlight_payoff",
+        "description": "终局开牢门并承担代价",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ]
+      }
+    ],
+    "allowed_changes": [
+      "叙述可改成分镜；牺牲王位的因果不可省略。"
+    ]
+  },
+  "output": {
+    "schema": 1,
+    "project_id": "project-a",
+    "base_revision": "ip-head-1",
+    "scope": {
+      "branch_id": "branch-a",
+      "story_time": 1,
+      "known_from": 1,
+      "perspective_id": "author",
+      "visibility": "restricted",
+      "known_by": [
+        "author"
+      ]
+    },
+    "status": "CANDIDATE",
+    "verdict": "UNKNOWN",
+    "checks": [
+      {
+        "requirement_id": "req-1",
+        "category": "theme",
+        "result": "PRESERVED",
+        "explanation": "救人并承担王位代价在提供的终局文本中有对应表达；仅评价该范围。",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ],
+        "target_evidence": [
+          {
+            "resource_id": "comic-1",
+            "revision": "rev-1",
+            "hash": "5e597251182c8c63655c7415b4d76dc4f85392c4cca4c7638d97836e2039d0e0",
+            "start_rune": 0,
+            "end_rune": 22,
+            "quote": "林昭放弃王位，用藏起的钥匙打开牢门救出妹妹。"
+          }
+        ],
+        "searched_target_ids": [
+          "comic-1"
+        ],
+        "setup_payoff_link": null,
+        "repair": "保留对应动机与代价，后续变更重新复核。"
+      },
+      {
+        "requirement_id": "req-2",
+        "category": "main_arc",
+        "result": "PRESERVED",
+        "explanation": "救出妹妹的主线在提供的终局文本中有对应表达；仅评价该范围。",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ],
+        "target_evidence": [
+          {
+            "resource_id": "comic-1",
+            "revision": "rev-1",
+            "hash": "5e597251182c8c63655c7415b4d76dc4f85392c4cca4c7638d97836e2039d0e0",
+            "start_rune": 0,
+            "end_rune": 22,
+            "quote": "林昭放弃王位，用藏起的钥匙打开牢门救出妹妹。"
+          }
+        ],
+        "searched_target_ids": [
+          "comic-1"
+        ],
+        "setup_payoff_link": null,
+        "repair": "保留对应动机与代价，后续变更重新复核。"
+      },
+      {
+        "requirement_id": "req-3",
+        "category": "motivation",
+        "result": "PRESERVED",
+        "explanation": "主动牺牲王位的动机在提供的终局文本中有对应表达；仅评价该范围。",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ],
+        "target_evidence": [
+          {
+            "resource_id": "comic-1",
+            "revision": "rev-1",
+            "hash": "5e597251182c8c63655c7415b4d76dc4f85392c4cca4c7638d97836e2039d0e0",
+            "start_rune": 0,
+            "end_rune": 22,
+            "quote": "林昭放弃王位，用藏起的钥匙打开牢门救出妹妹。"
+          }
+        ],
+        "searched_target_ids": [
+          "comic-1"
+        ],
+        "setup_payoff_link": null,
+        "repair": "保留对应动机与代价，后续变更重新复核。"
+      },
+      {
+        "requirement_id": "req-4",
+        "category": "causality",
+        "result": "PRESERVED",
+        "explanation": "藏钥匙使开牢门成为可能在提供的终局文本中有对应表达；仅评价该范围。",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ],
+        "target_evidence": [
+          {
+            "resource_id": "comic-1",
+            "revision": "rev-1",
+            "hash": "5e597251182c8c63655c7415b4d76dc4f85392c4cca4c7638d97836e2039d0e0",
+            "start_rune": 0,
+            "end_rune": 22,
+            "quote": "林昭放弃王位，用藏起的钥匙打开牢门救出妹妹。"
+          }
+        ],
+        "searched_target_ids": [
+          "comic-1"
+        ],
+        "setup_payoff_link": null,
+        "repair": "保留对应动机与代价，后续变更重新复核。"
+      },
+      {
+        "requirement_id": "req-5",
+        "category": "highlight_setup",
+        "result": "UNKNOWN",
+        "explanation": "当前只给终局片段，无法判定前面是否有藏钥匙的铺垫。",
+        "source_evidence": [
+          {
+            "resource_id": "chapter-1",
+            "revision": "rev-1",
+            "hash": "e0bd91169947dc8df6c5685f2fd1ac160faff1b87805852682bf07292f45c670",
+            "start_rune": 0,
+            "end_rune": 29,
+            "quote": "林昭决定救出妹妹，即使失去王位。她藏起钥匙，妹妹并不知道。"
+          }
+        ],
+        "target_evidence": [
+          {
+            "resource_id": "comic-1",
+            "revision": "rev-1",
+            "hash": "5e597251182c8c63655c7415b4d76dc4f85392c4cca4c7638d97836e2039d0e0",
+            "start_rune": 0,
+            "end_rune": 22,
+            "quote": "林昭放弃王位，用藏起的钥匙打开牢门救出妹妹。"
+          }
+        ],
+        "searched_target_ids": [
+          "comic-1"
+        ],
+        "setup_payoff_link": {
+          "setup_requirement_id": "req-5",
+          "payoff_requirement_id": "req-6",
+          "causal_explanation": "必须先有可辨认的藏钥匙铺垫，终局开门才构成可追溯回收；给定片段只证明开门。"
+        },
+        "repair": "补交此前分镜或补入藏钥匙画面，再复核。"
+      },
+      {
+        "requirement_id": "req-6",
+        "category": "highlight_payoff",
+        "result": "PRESERVED",
+        "explanation": "终局开牢门并承担代价在提供的终局文本中有对应表达；仅评价该范围。",
+        "source_evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ],
+        "target_evidence": [
+          {
+            "resource_id": "comic-1",
+            "revision": "rev-1",
+            "hash": "5e597251182c8c63655c7415b4d76dc4f85392c4cca4c7638d97836e2039d0e0",
+            "start_rune": 0,
+            "end_rune": 22,
+            "quote": "林昭放弃王位，用藏起的钥匙打开牢门救出妹妹。"
+          }
+        ],
+        "searched_target_ids": [
+          "comic-1"
+        ],
+        "setup_payoff_link": {
+          "setup_requirement_id": "req-5",
+          "payoff_requirement_id": "req-6",
+          "causal_explanation": "必须先有可辨认的藏钥匙铺垫，终局开门才构成可追溯回收；给定片段只证明开门。"
+        },
+        "repair": "保留对应动机与代价，后续变更重新复核。"
+      }
+    ],
+    "limitations": [
+      "仅提供终局文本，无法确认全篇完整覆盖或画面表现。"
+    ]
+  }
+}

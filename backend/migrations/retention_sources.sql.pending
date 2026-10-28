@@ -1,0 +1,30 @@
+-- NOT ACTIVE. Include in 0036 only with source lineage, expiry readers,
+-- archive/log compatibility and restore preservation of the original clocks.
+CREATE TABLE IF NOT EXISTS retention_source_slots (
+ id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ owner_table VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ owner_key VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ field_key VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ time_basis ENUM('LEGACY_REGISTERED') NOT NULL,
+ first_verified_at DATETIME(6) NOT NULL,
+ INDEX(project_id)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS retention_reference_versions (
+ reference_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ revision BIGINT UNSIGNED NOT NULL,
+ project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ source_slot_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ source_payload_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ record_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ snapshot MEDIUMTEXT NOT NULL,
+ recorded_at DATETIME(6) NOT NULL,
+ PRIMARY KEY(reference_id,revision), INDEX(project_id)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS retention_source_values (
+ source_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ payload_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ is_null BOOLEAN NOT NULL,
+ first_verified_at DATETIME(6) NOT NULL,
+ PRIMARY KEY(source_id,payload_hash,is_null)
+) ENGINE=InnoDB;

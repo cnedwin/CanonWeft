@@ -1,0 +1,14 @@
+{
+ "type":"object","additionalProperties":false,
+ "required":["character_id","look","name","canonical_appearance","locked_features","instructions","reference_images","previous_brief"],
+ "properties":{
+  "character_id":{"type":"string","minLength":1,"maxLength":160},
+  "look":{"type":"string","minLength":1,"maxLength":120},
+  "name":{"type":"string","minLength":1,"maxLength":160},
+  "canonical_appearance":{"type":"string","maxLength":16000},
+  "locked_features":{"type":"array","maxItems":100,"items":{"type":"string","minLength":1,"maxLength":500}},
+  "instructions":{"type":"string","minLength":1,"maxLength":10000},
+  "reference_images":{"type":"array","maxItems":16,"items":{"type":"object","additionalProperties":false,"required":["id","hash","look","description"],"properties":{"id":{"type":"string","minLength":1,"maxLength":160},"hash":{"type":"string","pattern":"^[a-f0-9]{64}$"},"look":{"type":"string","minLength":1,"maxLength":120},"description":{"type":"string","maxLength":4000}}}},
+  "previous_brief":{"type":"string","maxLength":16000}
+ }
+}

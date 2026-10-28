@@ -1,0 +1,14 @@
+{
+ "type":"object","additionalProperties":false,
+ "required":["character_id","look","visual_brief","render_prompt","preserve_features","proposed_details","open_questions","consistency_checks"],
+ "properties":{
+  "character_id":{"type":"string","minLength":1,"maxLength":160},
+  "look":{"type":"string","minLength":1,"maxLength":120},
+  "visual_brief":{"type":"string","minLength":1,"maxLength":16000},
+  "render_prompt":{"type":"string","minLength":1,"maxLength":32000},
+  "preserve_features":{"type":"array","maxItems":100,"items":{"type":"string","minLength":1,"maxLength":500}},
+  "proposed_details":{"type":"array","maxItems":100,"items":{"type":"string","minLength":1,"maxLength":500}},
+  "open_questions":{"type":"array","maxItems":50,"items":{"type":"string","minLength":1,"maxLength":500}},
+  "consistency_checks":{"type":"array","minItems":7,"maxItems":30,"items":{"type":"string","minLength":1,"maxLength":500}}
+ }
+}

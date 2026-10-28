@@ -1,0 +1,1 @@
+{"input":{"setup_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","revision":1,"current_setup":{"title":"","genre":"悬疑"},"requirements":"想写一个修钟表的人，替失踪的朋友查清十年前一场火灾。保留悬疑题材，帮我想书名。","source_ids":[]},"output":{"fields":[{"field":"title","value":"停在十一点的钟","basis":"proposal","source_ids":[],"reason":"把钟表职业与过去未解之事结合，是新增书名建议。"}],"warnings":["书名尚未经过作者确认；未检索是否与已发表作品重名。"]}}

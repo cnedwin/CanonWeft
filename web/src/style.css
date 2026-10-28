@@ -1,0 +1,372 @@
+:root {
+  font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  color: #263b36;
+  background: #f5f4ef;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  border: 0;
+  border-radius: 7px;
+  padding: 11px 20px;
+  background: #285c4d;
+  color: #fff;
+  font-weight: 600;
+}
+button:hover {
+  background: #1c463a;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+button.quiet {
+  background: transparent;
+  color: #52665d;
+  border: 1px solid #d7ded5;
+}
+input,
+textarea,
+select {
+  width: 100%;
+  background: #fff;
+  border: 1px solid #cdd6cd;
+  border-radius: 6px;
+  padding: 11px 12px;
+  color: #263b36;
+}
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid #93b7a4;
+  outline-offset: 2px;
+}
+label {
+  display: grid;
+  gap: 9px;
+  font-size: 14px;
+  color: #4e6259;
+}
+form {
+  display: grid;
+  gap: 19px;
+}
+h1 {
+  font-family: "SimSun", serif;
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin: 10px 0 16px;
+}
+h2 {
+  font-size: 21px;
+  margin: 4px 0 20px;
+}
+h3 {
+  font-size: 16px;
+}
+p {
+  line-height: 1.8;
+}
+.topbar {
+  height: 90px;
+  padding: 0 max(5vw, 24px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fdfcf8;
+  border-bottom: 1px solid #e1e5da;
+}
+.brand {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.brand strong {
+  font-size: 24px;
+  letter-spacing: 4px;
+}
+.brand small {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #7f8c81;
+  margin-top: 5px;
+}
+.seal {
+  font-family: serif;
+  color: #fff;
+  background: #426b57;
+  font-size: 29px;
+  border-radius: 9px;
+  padding: 7px 11px;
+}
+.pill {
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 1px solid #d3dcca;
+  border-radius: 20px;
+  color: #5d7260;
+  background: #edf1e6;
+}
+.account {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  font-size: 14px;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: #8c987b;
+  margin: 0;
+}
+.muted {
+  color: #758177;
+  font-size: 14px;
+}
+.panel {
+  background: #fdfdf9;
+  border: 1px solid #e1e5da;
+  border-radius: 12px;
+  padding: 28px;
+}
+.login {
+  max-width: 550px;
+  margin: 70px auto;
+  padding: 0 24px;
+}
+.login-form {
+  margin-top: 30px;
+}
+.workspace {
+  max-width: 1280px;
+  margin: 40px auto;
+  padding: 0 32px;
+}
+.intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.create {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  border-bottom: 1px solid #e5e8df;
+  padding-bottom: 25px;
+}
+.project-list {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.project-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  text-align: left;
+  background: #f2f4ed;
+  color: #31473a;
+  font-weight: 500;
+  border: 1px solid transparent;
+  min-height: 73px;
+}
+.project-card:hover,
+.project-card.active {
+  background: #e7eee0;
+  border-color: #a7b99b;
+}
+.project-card small {
+  margin-left: auto;
+  color: #7c8c73;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.book-mark {
+  font-family: serif;
+  background: #fdfcf7;
+  color: #788b66;
+  border-left: 3px solid #8ca079;
+  padding: 8px 11px;
+  border-radius: 2px;
+}
+.count {
+  font-size: 13px;
+  color: #89967a;
+  margin-left: 8px;
+}
+.empty {
+  padding: 34px 5px;
+  color: #84907d;
+  font-size: 14px;
+}
+.access {
+  border-top: 1px solid #e5e8df;
+  margin-top: 26px;
+  padding-top: 15px;
+  display: grid;
+  gap: 12px;
+}
+.access h3,
+.access p {
+  margin: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ip-workspace .panel {
+  margin-bottom: 24px;
+}
+.branch-create {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  margin-top: 24px;
+}
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.entity-editor {
+  border: 1px solid #dce2d6;
+  padding: 20px;
+  display: grid;
+  gap: 18px;
+  border-radius: 8px;
+  min-width: 0;
+}
+.entity-editor legend {
+  color: #657b60;
+  padding: 0 8px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+}
+.checkbox-label input {
+  width: auto;
+}
+.published-entity,
+.candidate-card {
+  padding: 18px 0;
+  border-top: 1px solid #e1e5da;
+  overflow-wrap: anywhere;
+}
+.published-entity .pill {
+  margin-left: 12px;
+}
+.candidate-card details {
+  margin: 16px 0;
+}
+.candidate-card summary {
+  cursor: pointer;
+}
+textarea {
+  resize: vertical;
+}
+.resource-edit,
+.bundle-actions,
+.release-preview {
+  margin-top: 24px;
+  display: grid;
+  gap: 16px;
+}
+.prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.9;
+  background: #f3f5ef;
+  padding: 18px;
+  border-radius: 6px;
+}
+.member-panel {
+  margin-top: 24px;
+}
+.member-panel summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.member-form {
+  grid-template-columns: 1fr 1fr 150px auto;
+  margin-top: 24px;
+  align-items: end;
+}
+.build-note {
+  font-size: 12px;
+  color: #8a9384;
+  line-height: 1.8;
+  margin: 28px 0;
+}
+.error {
+  color: #9f4535;
+  background: #faede6;
+  border: 1px solid #e9cbbc;
+  border-radius: 7px;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+.notice {
+  color: #356349;
+  background: #e8f0e3;
+  padding: 10px 16px;
+  border-radius: 7px;
+  font-size: 14px;
+}
+@media (max-width: 800px) {
+  .branch-create,
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .workspace {
+    padding: 0 18px;
+  }
+  .member-form {
+    grid-template-columns: 1fr;
+  }
+  .topbar {
+    padding: 0 18px;
+  }
+  .brand small {
+    display: none;
+  }
+  .create {
+    grid-template-columns: 1fr;
+  }
+  .login {
+    margin-top: 40px;
+  }
+  h1 {
+    font-size: 29px;
+  }
+}

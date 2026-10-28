@@ -1,0 +1,11 @@
+# Embedded migrations, templates and immutable candidate snapshots are hashed.
+# Preserve repository bytes on every platform; format source with project tools.
+* -text
+
+*.ttf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.pdf binary
+*.zip binary

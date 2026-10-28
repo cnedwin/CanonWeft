@@ -1,0 +1,209 @@
+{
+  "type": "object",
+  "properties": {
+    "search_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "检索词",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "purpose": {
+            "type": "string",
+            "title": "待证问题",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "preferred_source": {
+            "type": "string",
+            "title": "优先原始来源",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "query",
+          "purpose",
+          "preferred_source"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 30
+    },
+    "fact_cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "title": "一张卡一个事实/解释",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "contested",
+              "inference",
+              "unverified"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source_id": {
+                  "type": "string",
+                  "title": "来源标识",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "url": {
+                  "type": "string",
+                  "title": "原始网址",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "locator": {
+                  "type": "string",
+                  "title": "页码/段落/记录标识",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "evidence": {
+                  "type": "string",
+                  "title": "简短证据或结构化字段",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "captured_at": {
+                  "type": "string",
+                  "title": "材料记录的采集日期",
+                  "minLength": 1,
+                  "maxLength": 80
+                }
+              },
+              "required": [
+                "source_id",
+                "url",
+                "locator",
+                "evidence",
+                "captured_at"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 20
+          },
+          "era_scope": {
+            "type": "string",
+            "title": "适用年代",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "region_scope": {
+            "type": "string",
+            "title": "适用地域",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "limitations": {
+            "type": "string",
+            "title": "边界与不确定性",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "writing_use": {
+            "type": "string",
+            "title": "如何服务情节；不得当正史",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "review_after": {
+            "type": "string",
+            "title": "复核条件或日期",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "claim",
+          "status",
+          "sources",
+          "era_scope",
+          "region_scope",
+          "limitations",
+          "writing_use",
+          "review_after"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "supported",
+                    "contested"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "sources": {
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 100
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "来源冲突和取舍依据",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "还未取得的材料",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    },
+    "scene_checks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "写作前后核对点",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    }
+  },
+  "required": [
+    "search_plan",
+    "fact_cards",
+    "conflicts",
+    "gaps",
+    "scene_checks"
+  ],
+  "additionalProperties": false
+}

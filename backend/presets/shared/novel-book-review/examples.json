@@ -1,0 +1,28 @@
+{
+  "input": {
+    "book_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "chapter_ids": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "notes": "检查伏笔与人物选择",
+    "previous": {}
+  },
+  "output": {
+    "coverage": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "checks": {
+      "causality": "insufficient",
+      "character": "insufficient",
+      "foreshadow": "insufficient",
+      "theme": "insufficient",
+      "highlight": "insufficient",
+      "language": "insufficient"
+    },
+    "findings": [],
+    "carry": [],
+    "limits": [
+      "例子未附章节正文，不能判断因果与人物发展。"
+    ]
+  }
+}

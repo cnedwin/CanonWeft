@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>结构化上下文交互测试</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h } from "vue";
+      import KnowledgePanel from "/src/features/ip/KnowledgePanel.vue";
+      import "/src/style.css";
+      const project = {
+        id: "project-1",
+        name: "长篇测试",
+        revision: 1,
+        role: "owner",
+      };
+      const actor = {
+        id: "actor-1",
+        username: "作者",
+        workspace_id: "workspace-1",
+        role: "owner",
+      };
+      const branch = {
+        id: "branch-1",
+        name: "正史",
+        head: "canon-1",
+        revision: 1,
+        parent_id: "",
+        base_revision: "",
+        snapshot: {
+          entities: [
+            {
+              id: "hero",
+              name: "林舟",
+              kind: "character",
+              description: "",
+              aliases: [],
+            },
+          ],
+          assertions: [
+            {
+              id: "identity",
+              subject: "hero",
+              predicate: "身份",
+              value: "医师",
+              kind: "fact",
+              visibility: "public",
+              source: "作者",
+              known_by: [],
+              effective_from: 0,
+              known_from: 0,
+              recorded_at: "",
+              locked: true,
+            },
+          ],
+        },
+      };
+      createApp({
+        render: () =>
+          h(KnowledgePanel, {
+            project,
+            actor,
+            branch,
+            blocked: false,
+            publicationRevision: 1,
+          }),
+      }).mount("#app");
+    </script>
+  </body>
+</html>

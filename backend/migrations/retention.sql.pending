@@ -1,0 +1,99 @@
+-- NOT ACTIVE. Assign a new version only with matching archive/log compatibility.
+-- Schema 32 is the separate private patch draft migration.
+-- Retention metadata is never authority to undo the protected deletion ledger.
+CREATE TABLE IF NOT EXISTS retention_recovery_attempts (
+ target_project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ actor_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ storage_namespace CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ objects MEDIUMTEXT NOT NULL,
+ state ENUM('WRITING','COMMITTED','CLEANED','BLOCKED') NOT NULL DEFAULT 'WRITING',
+ restored_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ INDEX(state,restored_disabled,updated_at)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS project_lifecycle (
+ project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ source_ledger_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ delete_sequence BIGINT UNSIGNED NULL,
+ time_basis ENUM('SOURCE_UTC','LEGACY_REGISTERED') NOT NULL,
+ source_deleted_at DATETIME(6) NULL, first_verified_at DATETIME(6) NOT NULL,
+ deleted_at DATETIME(6) NULL, recover_until DATETIME(6) NULL,
+ cleanup_eligible_at DATETIME(6) NULL,
+ online_deadline DATETIME(6) NULL, backup_deadline DATETIME(6) NULL,
+ inventory_revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
+ catalog_version INT UNSIGNED NOT NULL DEFAULT 1,
+ scanned_at DATETIME(6) NULL,
+ state ENUM('UNSCANNED','CURRENT','PURGING','PURGED','OVERDUE','BLOCKED') NOT NULL DEFAULT 'UNSCANNED',
+ updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ INDEX(state,online_deadline)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS retention_references (
+ id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ owner_table VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ owner_key VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ field_key VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ class VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ storage_kind ENUM('BLOB','INLINE','METADATA') NOT NULL,
+ object_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+ payload_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ source_created_at DATETIME(6) NOT NULL,
+ time_basis ENUM('SOURCE_UTC','LEGACY_REGISTERED') NOT NULL,
+ first_verified_at DATETIME(6) NOT NULL, deadline DATETIME(6) NULL,
+ state ENUM('RETAINED','EXPIRED') NOT NULL DEFAULT 'RETAINED', expired_at DATETIME(6) NULL,
+ content_root BOOLEAN NOT NULL DEFAULT FALSE, accounting_open BOOLEAN NOT NULL DEFAULT FALSE,
+ lease_until DATETIME(6) NULL, revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
+ updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ INDEX(project_id,state,deadline), INDEX(project_id,object_hash)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS retention_objects (
+ project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ object_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ first_seen_at DATETIME(6) NOT NULL,
+	lease_until DATETIME(6) NULL,
+ state ENUM('PRESENT','DELETING','DELETED','BLOCKED') NOT NULL DEFAULT 'PRESENT',
+ revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
+ deleted_at DATETIME(6) NULL,
+ PRIMARY KEY(project_id,object_hash)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS retention_evidence (
+ id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ reference_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ reference_revision BIGINT UNSIGNED NOT NULL,
+ original_payload_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ projection_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ projection MEDIUMTEXT NOT NULL,
+ expired_at DATETIME(6) NOT NULL,
+ UNIQUE KEY(reference_id,reference_revision), INDEX(project_id)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS retention_jobs (
+ id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ project_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ actor_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NULL,
+ operation_id VARCHAR(120) NOT NULL,
+ request_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ inventory_revision BIGINT UNSIGNED NOT NULL,
+ inventory_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ plan_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ plan MEDIUMTEXT NOT NULL,
+ state ENUM('PLANNED','DETACHING','DELETING','VERIFYING','COMPLETE','RETRY_PENDING','OVERDUE','BLOCKED','CANCELLED') NOT NULL DEFAULT 'PLANNED',
+ cursor_key VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+ attempt INT UNSIGNED NOT NULL DEFAULT 0,
+ reason_code VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+ restored_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ UNIQUE KEY(project_id,operation_id), INDEX(state,updated_at)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS retention_receipts (
+ job_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ item_key VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ phase ENUM('DETACHED','REMOVED','VERIFIED') NOT NULL,
+ result ENUM('SUCCEEDED','ABSENT','BLOCKED') NOT NULL,
+ evidence_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ recorded_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ PRIMARY KEY(job_id,item_key,phase)
+) ENGINE=InnoDB;

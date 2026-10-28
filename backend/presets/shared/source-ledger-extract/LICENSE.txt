@@ -1,0 +1,6 @@
+LicenseRef-Project-Internal
+
+This method and its examples were authored for this project. They are included
+for use and modification within this platform. This file does not grant a
+license to third-party materials or change the license of the application.
+The project owner controls further distribution of project-authored materials.

@@ -1,0 +1,66 @@
+{
+  "type": "object",
+  "properties": {
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "相对文件路径",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "ADD",
+              "EDIT",
+              "DELETE"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "title": "变更原因",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "path",
+          "action",
+          "content",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 100
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "需裁决冲突",
+        "minLength": 1
+      },
+      "maxItems": 100
+    },
+    "remaining": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "剩余缺口",
+        "minLength": 1
+      },
+      "maxItems": 100
+    }
+  },
+  "required": [
+    "changes",
+    "conflicts",
+    "remaining"
+  ],
+  "additionalProperties": false
+}

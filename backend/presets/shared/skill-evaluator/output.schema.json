@@ -1,0 +1,64 @@
+{
+  "type": "object",
+  "properties": {
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "title": "检查项",
+            "minLength": 1
+          },
+          "evidence_id": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "FAIL",
+              "NOT_RUN"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "title": "依据",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "criterion",
+          "evidence_id",
+          "result",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 100
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": [
+        "REVIEW",
+        "HOLD"
+      ]
+    },
+    "unverified": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "未测项",
+        "minLength": 1
+      },
+      "maxItems": 100
+    }
+  },
+  "required": [
+    "checks",
+    "recommendation",
+    "unverified"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,24 @@
+{
+  "version": "26.10.0",
+  "status": "historical_experiment_stopped",
+  "supersededBy": "mysql-lts.json:9.7.4",
+  "channel": "MySQL Community Server Innovation GA",
+  "verifiedAt": "2026-10-25",
+  "downloadPage": "https://dev.mysql.com/downloads/mysql/",
+  "releaseNotes": "https://dev.mysql.com/doc/relnotes/mysql/26.10/en/",
+  "url": "https://cdn.mysql.com/Downloads/MySQL-26.10/mysql-26.10.0-winx64.zip",
+  "archive": "mysql-26.10.0-winx64.zip",
+  "bytes": 384367870,
+  "officialMd5": "11d70a5011b7760508e98b3a2fe5db3f",
+  "observedSha256": "4ef425963d11675d865528f5970e2b3766a48363694d0a588969fcce6ce54dd9",
+  "sha256Provenance": "Computed locally after download; not an official published SHA-256",
+  "mysqldAuthenticode": {
+    "status": "Valid",
+    "subject": "CN=\"Oracle America, Inc.\", O=\"Oracle America, Inc.\", L=Redwood City, S=California, C=US",
+    "thumbprint": "2B1BD188256EB612578949A943DE0DDC52D1DF79"
+  },
+  "scope": "Independent empty Windows loopback test instance; does not switch runtime.json or upgrade an existing data directory",
+  "port": 13316,
+  "serverId": 261000,
+  "database": "studio_next_test"
+}

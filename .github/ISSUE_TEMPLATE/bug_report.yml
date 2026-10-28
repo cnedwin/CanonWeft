@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a reproducible problem in CanonWeft.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use a minimal synthetic example. Do not upload API keys, passwords, sessions, real manuscripts, database files, backups, or private logs. Redact screenshots and error excerpts. For a security vulnerability, follow SECURITY.md instead of opening a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: Version and environment
+      description: Commit or release, Windows version, and relevant runtime versions.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest safe example and the entry point used.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Include a short sanitized error excerpt if useful.
+    validations:
+      required: true
+  - type: checkboxes
+    id: disclosure
+    attributes:
+      label: Public disclosure check
+      options:
+        - label: I checked this report and its attachments for credentials and private project data.
+          required: true

@@ -1,0 +1,247 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "explanation",
+    "questions",
+    "text"
+  ],
+  "properties": {
+    "explanation": {
+      "type": "string",
+      "maxLength": 20000
+    },
+    "questions": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "string",
+        "maxLength": 20000
+      }
+    },
+    "text": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "mainline": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "theme": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "world_rules": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "costs": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "boundaries": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "setting": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "factions": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "characters": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "arcs": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "turning_points": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "ending": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "open_questions": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      }
+    },
+    "volumes": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^([a-f0-9]{32})?$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 20000
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "summary"
+        ]
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^([a-f0-9]{32})?$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "perspective": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "goal": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "events": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "change": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "transition": {
+            "type": "string",
+            "maxLength": 20000
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "perspective",
+          "goal",
+          "events",
+          "change",
+          "transition"
+        ]
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^([a-f0-9]{32})?$"
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "characters": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "knowledge": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "goal": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "conflict": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "action": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "outcome": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "emotion": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "foreshadow": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "prerequisites": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "hook": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "words": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50000
+          }
+        },
+        "required": [
+          "id",
+          "time",
+          "place",
+          "characters",
+          "knowledge",
+          "goal",
+          "conflict",
+          "action",
+          "outcome",
+          "emotion",
+          "foreshadow",
+          "prerequisites",
+          "hook",
+          "words"
+        ]
+      }
+    }
+  }
+}

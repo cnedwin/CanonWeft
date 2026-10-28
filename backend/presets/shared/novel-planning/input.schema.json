@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "request",
+    "current",
+    "settings"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "world",
+        "book",
+        "volume",
+        "detail"
+      ]
+    },
+    "request": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10000
+    },
+    "current": {
+      "type": "object"
+    },
+    "settings": {
+      "type": "object"
+    }
+  }
+}

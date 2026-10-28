@@ -1,0 +1,134 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "entries",
+    "notes"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 2000,
+      "minLength": 1
+    },
+    "entries": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "context",
+          "subject_id",
+          "subject_name",
+          "holder_id",
+          "object_id",
+          "predicate",
+          "statement",
+          "story_time",
+          "known_from",
+          "visibility",
+          "known_by",
+          "quotes"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "fact",
+              "belief",
+              "claim",
+              "intent",
+              "hypothesis",
+              "event",
+              "relation",
+              "state",
+              "promise",
+              "highlight",
+              "summary"
+            ]
+          },
+          "context": {
+            "enum": [
+              "reality",
+              "flashback",
+              "dream",
+              "hypothetical",
+              "plan"
+            ]
+          },
+          "subject_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "subject_name": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "holder_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "object_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "predicate": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "statement": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1
+          },
+          "story_time": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "known_from": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "visibility": {
+            "enum": [
+              "author",
+              "public",
+              "restricted"
+            ]
+          },
+          "known_by": {
+            "type": "array",
+            "maxItems": 128,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          "quotes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 8000,
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      }
+    }
+  }
+}

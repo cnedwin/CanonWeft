@@ -1,0 +1,2 @@
+LicenseRef-Project-Internal
+Original platform method authored for this project. Private use and modification within this project are permitted. No third-party source text is incorporated. Public redistribution requires an explicit license decision by the project owner.

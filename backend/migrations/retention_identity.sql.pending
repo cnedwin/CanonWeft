@@ -1,0 +1,23 @@
+-- NOT ACTIVE. Activate together with retention, all request lookups and archive/log compatibility.
+CREATE TABLE IF NOT EXISTS retention_identity_policies (
+ workspace_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ legacy_writes_closed BOOLEAN NOT NULL DEFAULT FALSE,
+ revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
+ closed_at DATETIME(6) NULL,
+ created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS retention_operation_keys (
+ workspace_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ actor_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ owner_table VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ original_key_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ original_owner_key VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ anonymous_key VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ source_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ request_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ operation_kind VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+ created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ PRIMARY KEY(actor_id,owner_table,original_key_hash),
+ UNIQUE KEY(actor_id,owner_table,anonymous_key),
+ INDEX(workspace_id)
+) ENGINE=InnoDB;

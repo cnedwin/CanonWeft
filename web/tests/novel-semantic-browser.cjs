@@ -1,0 +1,44 @@
+const { chromium, expect } = require('@playwright/test');
+const path = require('node:path');
+(async () => {
+  const [origin, runID] = process.argv.slice(2);
+  if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error('isolated loopback required');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+    page.setDefaultTimeout(15000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(origin);
+    await page.getByLabel('用户名', { exact: true }).fill('qualification-owner');
+    await page.getByLabel('密码', { exact: true }).fill('qualification-password-123');
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await page.getByRole('button', { name: 'evaluation project', exact: true }).click();
+    await page.getByRole('button', { name: 'Skill 研究与编辑', exact: true }).click();
+    const panel = page.getByRole('region', { name: '独立评测与用途启用' });
+    await panel.getByRole('button', { name: new RegExp(runID.slice(0, 8)) }).click();
+    const stats = panel.getByRole('region', { name: '小说语义验收统计' });
+    await expect(stats).toBeVisible();
+    const rows = stats.getByRole('table').first().getByRole('row');
+    const candidate = rows.filter({ hasText: '候选版本' });
+    await expect(candidate).toContainText('200 / 200');
+    await expect(candidate).toContainText('100.0%');
+    await expect(candidate).toContainText('0 / 0');
+    await expect(candidate).toContainText('本样例集通过');
+    await expect(rows.filter({ hasText: '不使用方法' })).toContainText('尚无可计算结果');
+    await stats.getByText('候选版本：分类表现与未完成项', { exact: true }).click();
+    await expect(stats.getByRole('cell', { name: '主线、伏笔与高光', exact: true }).last()).toBeVisible();
+    await expect(panel.getByText('当前显示 50 / 600 条执行详情；汇总始终计算全部样例。', { exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: '再显示50条评测详情', exact: true }).click();
+    await expect(panel.getByText('当前显示 100 / 600 条执行详情；汇总始终计算全部样例。', { exact: true })).toBeVisible();
+    await stats.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.resolve(__dirname, '../../../work/novel-semantic-browser.png') });
+    await page.reload();
+    await page.getByRole('button', { name: 'evaluation project', exact: true }).click();
+    await page.getByRole('button', { name: 'Skill 研究与编辑', exact: true }).click();
+    await page.getByRole('region', { name: '独立评测与用途启用' }).getByRole('button', { name: new RegExp(runID.slice(0, 8)) }).click();
+    await expect(page.getByRole('region', { name: '小说语义验收统计' })).toContainText('200 / 200');
+    expect(errors).toEqual([]);
+    console.log('Actual Vue/HTTP/MySQL: full-corpus three-group metrics, category breakdown, bounded detail rendering and reload; no browser model call.');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

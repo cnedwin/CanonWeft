@@ -1,0 +1,44 @@
+{
+  "input": {
+    "prompt": "给一个克制、温润的架空文士取名",
+    "medium": "novel",
+    "count": 1,
+    "style": "古风克制",
+    "culture": "中文架空",
+    "era": "不对应真实朝代",
+    "existing_names": [
+      "沈见山"
+    ],
+    "constraints": [
+      "姓沈",
+      "不用生僻字"
+    ],
+    "materials": "无；本次只提供原创候选"
+  },
+  "output": {
+    "candidates": [
+      {
+        "name": "沈知衡",
+        "pronunciation": "Shěn Zhīhéng；普通话拟读",
+        "origin": "invented",
+        "tags": [
+          "古风",
+          "文士",
+          "克制"
+        ],
+        "rationale": "知与衡呼应学识和判断力，适合审慎文士；不声称出自古籍。",
+        "sources": [],
+        "conflicts": [
+          "与沈见山不同名；全库近音和现实同名未检索"
+        ],
+        "confidence": "unverified"
+      }
+    ],
+    "gaps": [
+      "未检索外部重名与历史用字"
+    ],
+    "checks": [
+      "比较本次输入中的一个已有姓名"
+    ]
+  }
+}

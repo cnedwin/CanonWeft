@@ -1,0 +1,28 @@
+{
+  "model": "BAAI/bge-m3",
+  "revision": "5617a9f61b028005a4858fdac845db406aefb181",
+  "dimension": 1024,
+  "format": "official-onnx-float32",
+  "files": {
+    "model.onnx": {
+      "size": 724923,
+      "sha256": "f84251230831afb359ab26d9fd37d5936d4d9bb5d1d5410e66442f630f24435b"
+    },
+    "model.onnx_data": {
+      "size": 2266820608,
+      "sha256": "1eebfb28493f67bba03ce0ef64bfdc7fc5a3bd9d7493f818bb1d78cd798416b4"
+    },
+    "Constant_7_attr__value": {
+      "size": 65552,
+      "sha256": "cdf16f72c5d07b36484056e601ed9687f78477e5d85cee85a34f2406b7fb5906"
+    },
+    "config.json": {
+      "size": 698,
+      "sha256": "f24afd5de914fba8c668426c43d208a1a54022500c63b2c160be20891686fce8"
+    },
+    "tokenizer.json": {
+      "size": 17082821,
+      "sha256": "6710678b12670bc442b99edc952c4d996ae309a7020c1fa0096dd245c2faf790"
+    }
+  }
+}

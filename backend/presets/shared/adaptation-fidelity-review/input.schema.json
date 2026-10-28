@@ -1,0 +1,259 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "base_revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      },
+      "minItems": 1,
+      "maxItems": 512
+    },
+    "target_medium": {
+      "type": "string",
+      "enum": [
+        "novel",
+        "comic",
+        "game"
+      ]
+    },
+    "target_complete": {
+      "type": "boolean"
+    },
+    "target_resource_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "minItems": 1,
+      "maxItems": 512,
+      "uniqueItems": true
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "theme",
+              "main_arc",
+              "motivation",
+              "causality",
+              "highlight_setup",
+              "highlight_payoff"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "source_evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/anchor"
+            },
+            "minItems": 1,
+            "maxItems": 64
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "description",
+          "source_evidence"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 512
+    },
+    "allowed_changes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8000
+      },
+      "minItems": 0,
+      "maxItems": 512
+    }
+  },
+  "required": [
+    "schema",
+    "project_id",
+    "base_revision",
+    "scope",
+    "sources",
+    "target_medium",
+    "target_complete",
+    "target_resource_ids",
+    "requirements",
+    "allowed_changes"
+  ],
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "branch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "story_time": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "known_from": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "perspective_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "visibility": {
+          "type": "string",
+          "enum": [
+            "public",
+            "restricted",
+            "private"
+          ]
+        },
+        "known_by": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "minItems": 0,
+          "maxItems": 512,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "branch_id",
+        "story_time",
+        "known_from",
+        "perspective_id",
+        "visibility",
+        "known_by"
+      ]
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "start_rune": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_rune": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        }
+      },
+      "required": [
+        "resource_id",
+        "revision",
+        "hash",
+        "start_rune",
+        "end_rune",
+        "quote"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "chapter",
+            "planning",
+            "memory",
+            "adaptation"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        }
+      },
+      "required": [
+        "resource_id",
+        "revision",
+        "hash",
+        "kind",
+        "text",
+        "scope"
+      ]
+    }
+  }
+}

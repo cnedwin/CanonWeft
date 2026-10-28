@@ -1,0 +1,12 @@
+#!/bin/busybox sh
+set -eu
+/bin/busybox --install -s /bin
+mount -t proc -o hidepid=2,nosuid,nodev,noexec proc /proc
+mount -t sysfs -o nosuid,nodev,noexec sysfs /sys
+mount -t devtmpfs -o nosuid,noexec devtmpfs /dev
+mount -t tmpfs -o size=16m,nr_inodes=2048,nosuid,nodev tmpfs /work
+chown 1000:1000 /work
+chmod 700 /work
+chmod 600 /dev/ttyS0 /dev/console /dev/kmsg
+stty -F /dev/ttyS0 raw -echo
+exec /usr/bin/python3 -I -B /guest.py </dev/ttyS0 >/dev/ttyS0 2>&1

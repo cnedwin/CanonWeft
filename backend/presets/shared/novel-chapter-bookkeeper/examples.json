@@ -1,0 +1,40 @@
+{
+  "input": {
+    "draft": {
+      "text": "林舟想：师父一定还活着。",
+      "story_time": 1
+    },
+    "plans": [],
+    "notes": "提取信念，勿当事实",
+    "style": "克制",
+    "language": "中文",
+    "narration": "第三人称限知",
+    "chapter_min": 1000,
+    "chapter_max": 3000
+  },
+  "output": {
+    "summary": "林舟相信师父尚在人世，真实性未证实。",
+    "entries": [
+      {
+        "kind": "belief",
+        "context": "reality",
+        "subject_id": "",
+        "subject_name": "林舟",
+        "holder_id": "",
+        "object_id": "",
+        "predicate": "相信",
+        "statement": "林舟相信师父仍然活着",
+        "story_time": 1,
+        "known_from": 1,
+        "visibility": "author",
+        "known_by": [],
+        "quotes": [
+          "林舟想：师父一定还活着。"
+        ]
+      }
+    ],
+    "notes": [
+      "林舟尚未关联到已发布人物ID。"
+    ]
+  }
+}

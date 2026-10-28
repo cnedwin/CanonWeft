@@ -1,0 +1,269 @@
+{
+  "input": {
+    "schema": 1,
+    "project_id": "project-a",
+    "base_revision": "ip-head-1",
+    "scope": {
+      "branch_id": "branch-a",
+      "story_time": 1,
+      "known_from": 1,
+      "perspective_id": "author",
+      "visibility": "restricted",
+      "known_by": [
+        "author"
+      ]
+    },
+    "sources": [
+      {
+        "resource_id": "chapter-1",
+        "revision": "rev-1",
+        "hash": "e0bd91169947dc8df6c5685f2fd1ac160faff1b87805852682bf07292f45c670",
+        "kind": "chapter",
+        "text": "林昭决定救出妹妹，即使失去王位。她藏起钥匙，妹妹并不知道。",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        }
+      },
+      {
+        "resource_id": "plan-1",
+        "revision": "rev-1",
+        "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+        "kind": "planning",
+        "text": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        }
+      }
+    ],
+    "focus": [
+      "facts",
+      "beliefs",
+      "relations",
+      "state",
+      "summaries",
+      "foreshadow",
+      "highlights",
+      "theme"
+    ],
+    "instructions": "不要把计划中的终局当成已经发生的事实。"
+  },
+  "output": {
+    "schema": 1,
+    "project_id": "project-a",
+    "base_revision": "ip-head-1",
+    "scope": {
+      "branch_id": "branch-a",
+      "story_time": 1,
+      "known_from": 1,
+      "perspective_id": "author",
+      "visibility": "restricted",
+      "known_by": [
+        "author"
+      ]
+    },
+    "status": "CANDIDATE",
+    "candidates": [
+      {
+        "id": "memory-1",
+        "kind": "fact",
+        "layer": "episodic",
+        "subject_id": "lin-zhao",
+        "holder_id": null,
+        "object_id": "key",
+        "predicate": "保管",
+        "statement": "林昭藏起了钥匙；妹妹尚不知情。",
+        "context": "reality",
+        "summary_level": "none",
+        "narrative_role": "none",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        },
+        "evidence": [
+          {
+            "resource_id": "chapter-1",
+            "revision": "rev-1",
+            "hash": "e0bd91169947dc8df6c5685f2fd1ac160faff1b87805852682bf07292f45c670",
+            "start_rune": 16,
+            "end_rune": 29,
+            "quote": "她藏起钥匙，妹妹并不知道。"
+          }
+        ],
+        "disposition": "proposed",
+        "related_ids": [],
+        "check_result": "not_applicable"
+      },
+      {
+        "id": "memory-2",
+        "kind": "summary",
+        "layer": "narrative",
+        "subject_id": null,
+        "holder_id": null,
+        "object_id": null,
+        "predicate": "章节摘要",
+        "statement": "林昭打算以失去王位为代价救妹妹，并藏起钥匙。",
+        "context": "reality",
+        "summary_level": "chapter",
+        "narrative_role": "none",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        },
+        "evidence": [
+          {
+            "resource_id": "chapter-1",
+            "revision": "rev-1",
+            "hash": "e0bd91169947dc8df6c5685f2fd1ac160faff1b87805852682bf07292f45c670",
+            "start_rune": 0,
+            "end_rune": 29,
+            "quote": "林昭决定救出妹妹，即使失去王位。她藏起钥匙，妹妹并不知道。"
+          }
+        ],
+        "disposition": "proposed",
+        "related_ids": [],
+        "check_result": "not_applicable"
+      },
+      {
+        "id": "memory-3",
+        "kind": "foreshadow",
+        "layer": "narrative",
+        "subject_id": "lin-zhao",
+        "holder_id": null,
+        "object_id": "key",
+        "predicate": "钥匙回收计划",
+        "statement": "规划要求终局用钥匙开牢门；目前仅为计划，尚未证实兑现。",
+        "context": "plan",
+        "summary_level": "none",
+        "narrative_role": "setup",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        },
+        "evidence": [
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ],
+        "disposition": "needs_confirmation",
+        "related_ids": [
+          "memory-1"
+        ],
+        "check_result": "not_applicable"
+      },
+      {
+        "id": "memory-4",
+        "kind": "theme_check",
+        "layer": "narrative",
+        "subject_id": "lin-zhao",
+        "holder_id": null,
+        "object_id": "key",
+        "predicate": "主题检查",
+        "statement": "当前片段体现救人及牺牲王位的动机，但不足以证明全书守诺主题已经兑现。",
+        "context": "reality",
+        "summary_level": "none",
+        "narrative_role": "none",
+        "scope": {
+          "branch_id": "branch-a",
+          "story_time": 1,
+          "known_from": 1,
+          "perspective_id": "author",
+          "visibility": "restricted",
+          "known_by": [
+            "author"
+          ]
+        },
+        "evidence": [
+          {
+            "resource_id": "chapter-1",
+            "revision": "rev-1",
+            "hash": "e0bd91169947dc8df6c5685f2fd1ac160faff1b87805852682bf07292f45c670",
+            "start_rune": 0,
+            "end_rune": 29,
+            "quote": "林昭决定救出妹妹，即使失去王位。她藏起钥匙，妹妹并不知道。"
+          },
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ],
+        "disposition": "needs_confirmation",
+        "related_ids": [],
+        "check_result": "unknown"
+      }
+    ],
+    "findings": [
+      {
+        "id": "finding-1",
+        "kind": "pending_confirmation",
+        "description": "妹妹的后续知情时间和终局兑现均未由正文证明。",
+        "candidate_ids": [
+          "memory-3",
+          "memory-4"
+        ],
+        "evidence": [
+          {
+            "resource_id": "chapter-1",
+            "revision": "rev-1",
+            "hash": "e0bd91169947dc8df6c5685f2fd1ac160faff1b87805852682bf07292f45c670",
+            "start_rune": 0,
+            "end_rune": 29,
+            "quote": "林昭决定救出妹妹，即使失去王位。她藏起钥匙，妹妹并不知道。"
+          },
+          {
+            "resource_id": "plan-1",
+            "revision": "rev-1",
+            "hash": "977ccef44e0362076e6e945c969abd61d036fa64a1f476268738710386549584",
+            "start_rune": 0,
+            "end_rune": 31,
+            "quote": "救人与守诺是主线。钥匙在终局打开牢门，放弃王位的代价不得删除。"
+          }
+        ],
+        "question": "后续确认正文是否已兑现钥匙与王位代价？"
+      }
+    ],
+    "limitations": [
+      "只检查所给章节与规划，不判断全书质量；规划与模型候选均不是已发生正史。"
+    ]
+  }
+}

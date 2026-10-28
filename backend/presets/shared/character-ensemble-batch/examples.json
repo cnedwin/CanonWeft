@@ -1,0 +1,58 @@
+{
+  "input": {
+    "book_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "resource_id": "cccccccccccccccccccccccccccccccc",
+    "ids": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "notes": "给悬疑小说设计一名不愿惹事却不得不作证的修表匠",
+    "genre": "悬疑",
+    "previous": {}
+  },
+  "output": {
+    "entities": [
+      {
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "kind": "character",
+        "name": "周守时",
+        "aliases": [],
+        "description": "老街修表匠。习惯先检查来客的袖口再接过表，怕麻烦，却记得每位客人留下的细节。"
+      }
+    ],
+    "assertions": [
+      {
+        "id": "occupation",
+        "subject": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "predicate": "职业",
+        "value": "老街修表匠",
+        "kind": "fact",
+        "effective_from": 0,
+        "known_from": 0,
+        "known_by": [],
+        "visibility": "author",
+        "recorded_at": "",
+        "locked": false,
+        "source": "作者创作候选"
+      },
+      {
+        "id": "goal",
+        "subject": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "predicate": "当前目标",
+        "value": "想作证澄清邻居的嫌疑，但担心暴露自己私修赃表的旧事。",
+        "kind": "intent",
+        "holder_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effective_from": 0,
+        "known_from": 0,
+        "known_by": [],
+        "visibility": "author",
+        "recorded_at": "",
+        "locked": false,
+        "source": "作者创作候选"
+      }
+    ],
+    "explanation": "将怕惹事与作证义务结合；目标是尚未完成的意图。尚未指定故事时间，暂用0；修表细节需后续专业资料核对。",
+    "warnings": [
+      "尚未指定邻居身份，未建立关系引用；作者可先补充或与关联角色一同创建。"
+    ]
+  }
+}

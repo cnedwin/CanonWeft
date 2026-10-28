@@ -1,0 +1,93 @@
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "title": "一句话起名要求",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "medium": {
+      "type": "string",
+      "enum": [
+        "novel",
+        "game"
+      ]
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "style": {
+      "type": "string",
+      "title": "风格与题材",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "culture": {
+      "type": "string",
+      "title": "语言文化与地域",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "era": {
+      "type": "string",
+      "title": "年代或架空约束",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "角色身份、性格与阵营",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    },
+    "existing_names": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "已有姓名/别名/读音",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "title": "姓氏、辈分、字数、读音、禁用字、谐音、同族规则",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "maxItems": 100
+    },
+    "materials": {
+      "type": "string",
+      "title": "检索到的候选及来源记录；没有则明确写无",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "feedback": {
+      "type": "string",
+      "maxLength": 8000
+    }
+  },
+  "required": [
+    "prompt",
+    "medium",
+    "count",
+    "style",
+    "culture",
+    "era",
+    "existing_names",
+    "constraints",
+    "materials"
+  ],
+  "additionalProperties": false
+}

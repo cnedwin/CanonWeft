@@ -1,0 +1,30 @@
+{
+  "input": {
+    "prompt": "写宋代商船靠岸后的手续，要有哪些考据",
+    "genre": "历史小说",
+    "era": "南宋",
+    "region": "泉州",
+    "chapter_need": "商人入港受检，避免使用现代报关细节",
+    "materials": "无；尚未抓取原始资料",
+    "source_policy": [
+      "优先官方博物馆与史料版本"
+    ]
+  },
+  "output": {
+    "search_plan": [
+      {
+        "query": "南宋 泉州 市舶 入港 抽解 史料",
+        "purpose": "核实机构职责、手续和适用年代",
+        "preferred_source": "官方博物馆资料与可核对版本的史料"
+      }
+    ],
+    "fact_cards": [],
+    "conflicts": [],
+    "gaps": [
+      "未取得具体出处，不能确定手续顺序与税率"
+    ],
+    "scene_checks": [
+      "取得证据后再写手续顺序；不得套用现代报关术语"
+    ]
+  }
+}

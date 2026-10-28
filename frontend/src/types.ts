@@ -1,0 +1,9 @@
+export type Entity = {id:string; name:string; aliases:string[]; description:string};
+export type Rule = {id:string; text:string; known_by:string[]};
+export type Lore = {brief:string; entities:Entity[]; rules:Rule[]};
+export type Issue = {severity:string; category:string; message:string; quote:string; suggestion:string};
+export type Candidate = {id:string; project_id:string; chapter:number; title:string; body?:string; status:string; reviewed:boolean; base_revision:number; created_at:string; issues:Issue[]; ledger:any; plan:any; needs_review?:boolean; proposed_lore?:Lore; skill_set_id:string; context:any};
+export type Project = {id:string; title:string; brief:string; revision:number; lore:Lore; chapters:Candidate[]};
+export type Skill = {role:string; name:string; instructions:string; hash:string; version:number; source:string; execution:string; validation?:string};
+export type Task = {id:string; status:string; stage:string; message:string; candidate_id:string|null; chapter:number; steps:Record<string,{role:string; data:any}>; created_at:string};
+export type Budget = {enabled:boolean; total_cap:number; task_cap:number; spent:number; reserved:number; key_ready:boolean; calls:any[]};

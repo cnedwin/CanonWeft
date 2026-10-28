@@ -1,0 +1,22 @@
+{
+  "input": {
+    "objective": "技能适配并保留证据边界",
+    "materials": "source-1: https://example.org/method；材料仅说明有输入输出及例子，许可、固定提交与真实运行均未知。",
+    "feedback": "缺证据时明确记录，不编造。"
+  },
+  "output": {
+    "changes": [
+      {
+        "path": "SKILL.md",
+        "action": "ADD",
+        "content": "只检查已给材料，缺少许可则保留待验证；不能执行外部脚本。",
+        "reason": "增加缺失的证据和权限边界；示例片段不是完整可发布包"
+      }
+    ],
+    "conflicts": [],
+    "remaining": [
+      "须补完整契约、例子、来源许可及独立评测"
+    ]
+  },
+  "counterexample": "为让测试通过而修改保留集预期答案，或删除上游许可。正确处理：拒绝这类改动，将问题反馈给独立评测管理者。"
+}

@@ -1,0 +1,31 @@
+CanonWeft · 砚台
+https://github.com/cnedwin/CanonWeft
+
+The main project code is licensed under the Apache License, Version 2.0.
+See LICENSE. Third-party materials retain their own licenses and notices.
+
+Attribution index for materials retained in this repository:
+
+- LXGW WenKai font: SIL Open Font License 1.1. Source, version, original
+  copyright notices, and license are retained in:
+  backend/internal/novel/fonts/SOURCE.md
+  backend/internal/novel/fonts/OFL.txt
+
+- PDF libraries: gopdf and gofpdi (MIT), pkg/errors (BSD-2-Clause).
+  Original copyright notices and license texts are retained in:
+  backend/third_party/pdf/gopdf-LICENSE.txt
+  backend/third_party/pdf/gofpdi-LICENSE.txt
+  backend/third_party/pdf/pkg-errors-LICENSE.txt
+
+- shuohao-skills
+  Copyright 2026 烁皓
+  Original Apache License 2.0 texts and NOTICE files, including the
+  bundled sample-story attribution, are retained in each upstream snapshot:
+  backend/presets/external/shuohao/5612d2a0bd5f19d978c3ee19d1e42840335e3b4b/upstream/LICENSE
+  backend/presets/external/shuohao/5612d2a0bd5f19d978c3ee19d1e42840335e3b4b/upstream/NOTICE
+  backend/presets/external/shuohao/6dbddc64fed306fc96d22674cd36b717a8190d90/upstream/LICENSE
+  backend/presets/external/shuohao/6dbddc64fed306fc96d22674cd36b717a8190d90/upstream/NOTICE
+
+This index does not replace the original notices or a complete dependency
+license inventory. See THIRD_PARTY_NOTICES.md for source and distribution
+boundaries.

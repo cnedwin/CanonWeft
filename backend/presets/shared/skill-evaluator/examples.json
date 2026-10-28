@@ -1,0 +1,24 @@
+{
+  "input": {
+    "objective": "技能评测审阅并保留证据边界",
+    "materials": "source-1: https://example.org/method；材料仅说明有输入输出及例子，许可、固定提交与真实运行均未知。",
+    "feedback": "缺证据时明确记录，不编造。"
+  },
+  "output": {
+    "checks": [
+      {
+        "criterion": "独立保留集",
+        "evidence_id": "",
+        "result": "NOT_RUN",
+        "reason": "未给平台产生的运行回执，作者自述不能替代"
+      }
+    ],
+    "recommendation": "HOLD",
+    "unverified": [
+      "真实模型效果",
+      "脚本隔离",
+      "基线对照"
+    ]
+  },
+  "counterexample": "收到漂亮输出就自动发布方法，或把一次协议测试写成文学质量达标。正确处理：保留未测范围和资格门，输出评测建议。"
+}

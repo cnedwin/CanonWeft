@@ -1,0 +1,24 @@
+{
+  "input": {
+    "objective": "技能发现并保留证据边界",
+    "materials": "source-1: https://example.org/method；材料仅说明有输入输出及例子，许可、固定提交与真实运行均未知。",
+    "feedback": "缺证据时明确记录，不编造。"
+  },
+  "output": {
+    "candidates": [
+      {
+        "source_id": "source-1",
+        "url": "https://example.org/method",
+        "evidence": "材料登记：附输入输出与正常例子，许可未知。",
+        "fit": "适合资料提取候选，许可需查明。"
+      }
+    ],
+    "search_suggestions": [
+      "查找该方法明确的许可文件"
+    ],
+    "gaps": [
+      "未提供实际运行和模型效果证据"
+    ]
+  },
+  "counterexample": "材料只说某方法很热门，却输出不存在的提交和成功率。正确处理：不构造候选版本，记录证据不足。"
+}

@@ -1,0 +1,79 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "status": {
+      "const": "CANDIDATE"
+    },
+    "plan_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{32}$"
+    },
+    "patches": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "base_revision": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "base_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "start_rune": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_rune": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_text": {
+            "type": "string"
+          },
+          "replacement": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "resource_id",
+          "base_revision",
+          "base_hash",
+          "start_rune",
+          "end_rune",
+          "expected_text",
+          "replacement",
+          "reason"
+        ]
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    }
+  },
+  "required": [
+    "schema",
+    "status",
+    "plan_id",
+    "patches",
+    "summary"
+  ]
+}

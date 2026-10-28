@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "verified_at": "2026-10-25",
+  "platform": "windows-x64",
+  "status": "historical_rejected_candidate_not_upgrade_target",
+  "selected_compatible_baseline": "3.12.15; deploy/locks/python-workers.json",
+  "python": {
+    "version": "3.15.1",
+    "distribution": "Astral python-build-standalone install_only, GIL enabled",
+    "release": "20261021",
+    "directory": "python-3.15.1-20261021",
+    "executable": "python/python.exe",
+    "archive": "cpython-3.15.1+20261021-x86_64-pc-windows-msvc-install_only.tar.gz",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.15.1%2B20261021-x86_64-pc-windows-msvc-install_only.tar.gz",
+    "sha256": "bf24bbbe0c7333795c8e04f9dbdf290e96f84d88094dfe0a73c3ae19ba34af22",
+    "bytes": 52598275,
+    "hash_source": "https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20261021",
+    "second_hash_source": "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/SHA256SUMS",
+    "verification": "download hash matches release asset digest and SHA256SUMS",
+    "authenticode": "NotSigned; no code-signature validation claimed",
+    "license": "PSF Python license plus bundled notices"
+  },
+  "isolated_venv": "work/runtime/toolchain/python315-check-venv",
+  "pip_version": "26.2.2",
+  "verified_support_subset": [
+    {
+      "name": "numpy",
+      "version": "2.5.4",
+      "sha256": "332f3378fe077dd850e677ec01bdcc4f22368fb5d50ef10b2c79230b1bf5a592",
+      "url": "https://files.pythonhosted.org/packages/50/bc/d2651b155ecc608a77e6f4d15495c11f14f19bb98f8bf0c5b0d38f86dda1/numpy-2.5.4-cp315-cp315-win_amd64.whl"
+    },
+    {
+      "name": "pypdfium2",
+      "version": "5.14.0",
+      "sha256": "149fd5c6397b8df8bf7911a93506eff0be874f877afe7ac936cf5d37d21a6a06",
+      "url": "https://files.pythonhosted.org/packages/00/dc/ca7874924c9cfd701ad53f89529968523790e70473e0b71e834668316148/pypdfium2-5.14.0-py3-none-win_amd64.whl"
+    },
+    {
+      "name": "pillow",
+      "version": "13.0.0",
+      "sha256": "d4737f50d23ddd11d6685faacbb9252887dde0bc7997127757247983d74399d6",
+      "url": "https://files.pythonhosted.org/packages/44/05/fdb6a79aee10861165526b41b7b440e36ee1ff58613b2fbefe3acbf06d4f/pillow-13.0.0-cp315-cp315-win_amd64.whl"
+    }
+  ],
+  "embedding_closure": "blocked",
+  "ingest_closure": "blocked",
+  "historical_workers_at_probe": "Python 3.12.14; later superseded by compatible baseline 3.12.15",
+  "evidence": "work/python-next-evidence",
+  "limitations": [
+    "No BGE-M3 or OCR inference on Python 3.15",
+    "No model download",
+    "No source-build or setup.py execution",
+    "No cp314 wheel renamed or forced onto cp315",
+    "No claim of full Python stack upgrade"
+  ]
+}

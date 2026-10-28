@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "text",
+    "notes"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100000
+    },
+    "notes": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      }
+    }
+  }
+}

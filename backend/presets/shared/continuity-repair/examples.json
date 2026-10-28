@@ -1,0 +1,17 @@
+{
+  "input": {
+    "plan": {
+      "id": "dddddddddddddddddddddddddddddddd",
+      "branch_id": "cccccccccccccccccccccccccccccccc",
+      "items": []
+    },
+    "targets": []
+  },
+  "output": {
+    "schema": 1,
+    "status": "CANDIDATE",
+    "plan_id": "dddddddddddddddddddddddddddddddd",
+    "patches": [],
+    "summary": "未提供受影响原文，无法生成有精确锚点的修改；需补充后复核。"
+  }
+}

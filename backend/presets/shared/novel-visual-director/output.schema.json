@@ -1,0 +1,105 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "novel",
+    "look",
+    "visual_brief",
+    "render_prompt",
+    "preserve_features",
+    "proposed_details",
+    "open_questions",
+    "consistency_checks"
+  ],
+  "properties": {
+    "novel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "book_id",
+        "kind",
+        "name",
+        "source_ids",
+        "character_ids"
+      ],
+      "properties": {
+        "book_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "kind": {
+          "enum": [
+            "cover",
+            "scene"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "source_ids": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "string"
+          }
+        },
+        "character_ids": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "look": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "visual_brief": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "render_prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 12000
+    },
+    "preserve_features": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "string",
+        "maxLength": 1000
+      }
+    },
+    "proposed_details": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "string",
+        "maxLength": 1000
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "string",
+        "maxLength": 1000
+      }
+    },
+    "consistency_checks": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "string",
+        "maxLength": 1000
+      }
+    }
+  }
+}

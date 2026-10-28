@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "python_version": "3.12.15",
+  "embedding": "work/embedding-venv-3.12.15",
+  "ingest": "work/ingest-venv-3.12.15",
+  "rollback": {
+    "python_version": "3.12.14",
+    "embedding": "work/embedding-venv",
+    "ingest": "work/ingest-venv"
+  },
+  "selection": "Highest stable Python compatible with the unchanged complete worker dependency locks; RapidOCR 1.4.4 requires Python <3.13",
+  "verified_at": "2026-10-25"
+}

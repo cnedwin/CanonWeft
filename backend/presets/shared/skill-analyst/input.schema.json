@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "objective": {
+      "type": "string",
+      "title": "本次目标",
+      "minLength": 1
+    },
+    "materials": {
+      "type": "string",
+      "title": "资料与来源记录",
+      "minLength": 1
+    },
+    "feedback": {
+      "type": "string",
+      "title": "修改意见"
+    }
+  },
+  "required": [
+    "objective",
+    "materials"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,28 @@
+{
+  "go": "1.27.3",
+  "vue": "3.5.44",
+  "python": "3.12.15",
+  "editionPolicy": "community-open-source-free; stable-compatible releases; MySQL LTS",
+  "echo": "5.4.2",
+  "mysql": {
+    "version": "9.7.4",
+    "edition": "Community",
+    "channel": "LTS",
+    "license": "GPL-2.0",
+    "url": "https://cdn.mysql.com/Downloads/MySQL-9.7/mysql-9.7.4-winx64.zip",
+    "md5": "e05aaa40639d8548e0f68b7a70685a3b",
+    "mysqldAuthenticode": "Valid"
+  },
+  "temporal": {
+    "version": "1.32.1",
+    "url": "https://github.com/temporalio/temporal/releases/download/v1.32.1/temporal_1.32.1_windows_amd64.zip",
+    "sha256": "bf630fbe2666bd951f22f2625ee18c3b2062d809a1ff4b6adbc74f5ca9a56202",
+    "sdk": "1.37.0"
+  },
+  "s3_test": {
+    "version": "4.49",
+    "url": "https://github.com/seaweedfs/seaweedfs/releases/download/4.49/windows_amd64.zip",
+    "sha256": "34f722f32399293721ba5d87f59a2ee9d108f09267f8a6a6bc8b8c84d72ab171"
+  },
+  "scope": "Default for fresh native Windows loopback installations; existing unmarked 8.4 data remains on its original engine pending verified migration. No external script isolation qualification."
+}

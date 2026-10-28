@@ -1,0 +1,25 @@
+{
+  "input": {
+    "objective": "技能分析并保留证据边界",
+    "materials": "source-1: https://example.org/method；材料仅说明有输入输出及例子，许可、固定提交与真实运行均未知。",
+    "feedback": "缺证据时明确记录，不编造。"
+  },
+  "output": {
+    "recommendation": "HOLD",
+    "findings": [
+      {
+        "severity": "REVIEW",
+        "source": "source-1/LICENSE:未提供",
+        "issue": "无法确认复用许可",
+        "resolution": "保存原候选，补许可证据后再适配"
+      }
+    ],
+    "dependencies": [
+      "执行入口尚未提供，不能声明工具资格"
+    ],
+    "unverified": [
+      "无固定包与独立评测"
+    ]
+  },
+  "counterexample": "作者在包里写 all tests pass，分析就标记 QUALIFIED。正确处理：宣称属于输入材料，缺少平台产生的运行证据，保持待验证。"
+}

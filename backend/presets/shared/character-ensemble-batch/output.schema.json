@@ -1,0 +1,190 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entities",
+    "assertions",
+    "explanation",
+    "warnings"
+  ],
+  "properties": {
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "aliases",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "kind": {
+            "const": "character"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 6000
+          },
+          "status": {
+            "enum": [
+              "",
+              "active",
+              "disabled"
+            ]
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "profile": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "maxItems": 3000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "subject",
+          "predicate",
+          "value",
+          "kind",
+          "effective_from",
+          "known_from",
+          "known_by",
+          "visibility",
+          "recorded_at",
+          "locked",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "predicate": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000
+          },
+          "object_id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "fact",
+              "belief",
+              "claim",
+              "intent",
+              "hypothesis"
+            ]
+          },
+          "effective_from": {
+            "type": "integer"
+          },
+          "known_from": {
+            "type": "integer"
+          },
+          "known_by": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "visibility": {
+            "enum": [
+              "",
+              "author",
+              "restricted",
+              "public"
+            ]
+          },
+          "recorded_at": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          },
+          "holder_id": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "effective_until": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "explanation": {
+      "type": "string",
+      "maxLength": 12000
+    },
+    "warnings": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      }
+    }
+  }
+}
