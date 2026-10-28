@@ -276,6 +276,7 @@ let disposed = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let selection = 0;
 let selecting = false;
+let listEpoch = 0;
 watch(
   [
     () => current.value?.id,
@@ -378,12 +379,14 @@ function fail(e: unknown) {
 function money(value: number) {
   return (value / 1000000).toFixed(6);
 }
-async function refresh() {
+async function refresh(afterMutation = false) {
+  // Background polls are serialized; a mutation supersedes their old reads.
+  const epoch = afterMutation ? ++listEpoch : listEpoch;
   try {
     const response = await api<{ items: Task[]; runtime_ready: boolean }>(
       `${root}?branch=${props.branch.id}${props.assistance ? `&creative=${encodeURIComponent(props.assistance.kind)}&creative_target=${encodeURIComponent(props.assistance.target ?? String(props.assistance.payload.character_id ?? props.assistance.payload.setup_id ?? ""))}` : ""}`,
     );
-    if (disposed) return;
+    if (disposed || epoch !== listEpoch) return;
     tasks.value = response.items;
     runtimeReady.value = response.runtime_ready;
     if (
@@ -397,6 +400,7 @@ async function refresh() {
       current.value = null;
     }
   } catch (e) {
+    if (disposed || epoch !== listEpoch) return;
     if (
       !disposed &&
       e instanceof APIError &&
@@ -470,7 +474,7 @@ async function prepare() {
       dirty.value = false;
       current.value = task;
       notice.value = "要求、资料和方法版本已保存，尚未调用模型。";
-      await refresh();
+      await refresh(true);
       return;
     }
     if (props.writing) {
@@ -494,7 +498,7 @@ async function prepare() {
         role === "bookkeeper"
           ? "本章原文与记账要求已保存，尚未调用模型。"
           : "本章原稿、细纲和写作要求已保存，尚未调用模型。";
-      await refresh();
+      await refresh(true);
       return;
     }
     if (props.characters) {
@@ -513,7 +517,7 @@ async function prepare() {
       dirty.value = false;
       current.value = task;
       notice.value = "角色要求与本版候选已保存，尚未调用模型。";
-      await refresh();
+      await refresh(true);
       return;
     }
     if (props.planning) {
@@ -532,7 +536,7 @@ async function prepare() {
       dirty.value = false;
       current.value = task;
       notice.value = "规划要求与引用资料已保存，尚未调用模型。";
-      await refresh();
+      await refresh(true);
       return;
     }
     if (trial.value && !trial.value.valid)
@@ -571,14 +575,14 @@ async function prepare() {
     dirty.value = false;
     current.value = task;
     notice.value = "候选任务与费用估算已保存，尚未发送模型请求。";
-    await refresh();
+    await refresh(true);
   });
 }
 async function act(task: Task, action: string) {
   await perform(async () => {
     if (action === "start") await api(`${root}/${task.id}/start`, "POST", {});
     else await api(`${root}/${task.id}/control`, "POST", { action });
-    await refresh();
+    await refresh(true);
     await inspect(task);
   });
 }
