@@ -27,8 +27,6 @@ try {
     } finally {
         $env:PLAYWRIGHT_BROWSERS_PATH = $webPreviousBrowserPath
     }
-    & $webInstallTools.Node node_modules/vue-tsc/bin/vue-tsc.js --noEmit
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend type check failed' }
-    & $webInstallTools.Node node_modules/vite/bin/vite.js build
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
+    & $webInstallTools.Node $webPnpm run build
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend type check or build failed' }
 } finally { Pop-Location }
