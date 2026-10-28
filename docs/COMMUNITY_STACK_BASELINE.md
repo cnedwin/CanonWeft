@@ -1,4 +1,4 @@
-# 社区免费技术基线 v1.7.1
+# 社区免费技术基线 v1.7.2
 
 维护日期：2026-10-28。版本策略优先保证现有必需组件兼容、来源可核验和部署可复现。以下是仓库锁定基线，不代表各项目的全球最新版本；产品范围见[分期方案](DELIVERY_ROADMAP.md)，当前功能与验收边界见[实施状态](IMPLEMENTATION_STATUS.md)。
 
@@ -10,6 +10,12 @@
 | Vue | **3.5.44** | MIT；使用已验证Composition API/TypeScript组合，不切换预发布版。[版本](https://github.com/vuejs/core/releases/tag/v3.5.44)、[许可](https://github.com/vuejs/core/blob/v3.5.44/LICENSE) |
 
 Python.org的3.12安全更新仅提供源码；Windows采用已校验的Astral python-build-standalone完整发行，保留解释器与捆绑依赖许可，不能把社区二进制称为Python.org官方Windows安装器。其余基础设施沿用开源自托管版本；不新增付费企业功能、强制商业账户或云托管依赖。可选模型API仍遵守原有单独费用授权，软件免费不能被当作模型调用免费。
+
+## 应用依赖安全基线（2026-10-28）
+
+- Vue 工作台与历史 React 原型的构建工具均锁定 [Vite 7.3.7](https://github.com/vitejs/vite/releases/tag/v7.3.7)，覆盖相关开发服务器文件访问和 Windows 编辑器启动安全修复；对应 pnpm 锁文件保留真实依赖摘要。该补丁需要的 esbuild 及平台二进制随锁文件解析更新。
+- Go 模块锁定 [gRPC-Go 1.83.1](https://github.com/grpc/grpc-go/releases/tag/v1.83.1) 与 [compress 1.18.7](https://github.com/klauspost/compress/releases/tag/v1.18.7)，覆盖已公告的协议权限、内存耗尽及压缩处理漏洞。Go、Echo、Temporal SDK 与数据库基线保持原版本，必要传递依赖以 go.mod/go.sum 为准。
+- 依赖锁更新不自动替换正在运行的二进制或安装目录。重新构建后的服务、完整安装、持久任务和真实模型流程仍需按相应发布范围验证；依赖扫描与构建通过不代表不存在其他安全问题。
 
 ## 配置与实际运行
 
