@@ -330,7 +330,9 @@ func operationOwnerTable(kind string) string {
 func auditOwnerTable(action string) string {
 	groups := map[string][]string{
 		"novel_setup_drafts": {"novel.setup.save"}, "novels": {"novel.create", "novel.settings.save", "novel.settings.confirm"},
-		"workspaces": {"budget.configure"}, "workspace": {"diagnostics.export"}, "users": {"member.create"},
+		// The local account-recovery tool records the reset user as its target.
+		// Resolve the actual user and workspace, as for other identity audits.
+		"workspaces": {"budget.configure"}, "workspace": {"diagnostics.export"}, "users": {"member.create", "local_password_reset"},
 		"model_connections": {"model.configure", "model.bind.architect", "model.bind.planner", "model.bind.writer", "model.bind.bookkeeper", "model.bind.critic", "model.bind.researcher", "model.bind.character_designer", "model.bind.continuity_editor", "model.bind.style_editor", "model.bind.asset_designer", "model.bind.image_generator", "model.bind.import_reader"},
 		"model_prices":      {"model.price"}, "model_calls": {"model.cancel"}, "model_reconciliations": {"model.reconcile"},
 		"projects": {"project.create", "project.rename", "project.delete", "project.recover", "project.membership"}, "branches": {"branch.create", "knowledge.index", "knowledge.private_index"},
@@ -345,7 +347,7 @@ func auditOwnerTable(action string) string {
 		"semantic_review_runs":    {"semantic.review.prepare", "semantic.review.start", "semantic.review.pause", "semantic.review.resume", "semantic.review.cancel", "semantic.review.select"},
 		"skill_packages":          {"skill.candidate", "skill.reference", "skill.revoke", "discovery.candidate"},
 		"skill_discovery_sources": {"discovery.source"}, "skill_discovery_runs": {"discovery.run", "discovery.pause", "discovery.resume", "discovery.cancel"},
-		"platform_tasks": {"task.create", "task.pause", "task.resume", "task.cancel"}, "tool_trials": {"tool.trial", "tool.cancel", "tool.result"},
+		"platform_tasks": {"task.create", "task.pause", "task.resume", "task.cancel", "task.refresh"}, "tool_trials": {"tool.trial", "tool.cancel", "tool.result"},
 		"memory_items": {"memory.update"}, "memory_sessions": {"memory.session"},
 	}
 	for table, actions := range groups {
