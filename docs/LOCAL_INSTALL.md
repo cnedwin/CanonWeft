@@ -4,7 +4,7 @@
 
 ## 从干净克隆安装
 
-将仓库放在自己有写入权限的目录，仓库的父目录也须可写；安装器会在仓库旁创建 `work/`。路径从脚本所在目录推导，不依赖固定用户名、盘符或开发工具缓存。建议使用较短的目录路径，避免 Windows 归档解压的路径长度限制。
+将仓库放在自己有写入权限的目录，仓库的父目录也须可写；安装器会在仓库旁创建 `work/`。路径从脚本所在目录推导，不依赖固定用户名、盘符或开发工具缓存。首次引导在校验固定归档后安装便携 PowerShell 7，再由该已校验入口继续安装和完整性检查，兼容 Windows PowerShell 5.1 的长路径限制；不会改用系统 PATH 中未经校验的 PowerShell。仍建议使用较短目录，以兼容数据库和其他工具的路径限制。
 
 1. 双击根目录的 `Install-Platform.cmd`，或在仓库根目录运行 `.\Install-Platform.cmd`。
 2. 安装器下载并校验锁定的 PowerShell、Node.js、Python、Go、MySQL Community、Temporal、测试存储、本地嵌入模型、文件解析和隔离工具，按锁文件安装依赖并构建应用。首次安装需要联网和足够的磁盘空间，也会安装验收使用的 Chromium。
@@ -57,6 +57,8 @@ $platformPowerShell = '..\work\runtime\toolchain\powershell-7.6.5\pwsh.exe'
 ## 验证与排错边界
 
 `-VerifyOnly` 只证明四个工具的文件和版本校验通过，不证明数据库、小说流程或真实模型质量。文件格式、OCR 和识别限制见 [FILE_INGEST.md](FILE_INGEST.md)，便携环境契约见 [PORTABLE_RUNTIME.md](PORTABLE_RUNTIME.md)。
+
+独立目录中的完整安装与构建已有实际验证：冻结的1973文件源码快照通过顶层 `Install-Platform.cmd`，使用锁定版本、已校验缓存和新建Python环境，前后端构建成功且源码哈希不变。前端安装与日常构建共用 `web/package.json` 的命令，包含类型检查和原生Vite配置加载；构建失败会中止安装。该次验证未启动应用、初始化数据库或创建账号，也不证明新机器、完整联网下载、后续源码或数据恢复已通过。当前边界见 [实现状态](IMPLEMENTATION_STATUS.md)。
 
 `scripts/verify-platform.ps1` 是维护者的完整集成验收入口，会使用真实本地依赖、构建和测试服务，并对受保护的测试数据库运行清理/恢复场景。它属于维护验证，不适合作为普通启动命令。运行前应阅读脚本和测试环境要求，停止相关应用和 worker，确认测试库与业务数据隔离。
 

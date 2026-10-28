@@ -206,11 +206,11 @@ func eligible(i Item, s Scope) bool {
 	return i.State == "published" && s.NarrativeTime >= i.RevealAt && (i.Visibility == "public" || (i.Visibility == "restricted" && slices.Contains(i.KnownBy, s.Perspective)))
 }
 func channel(i Item, s Scope) string {
-	if i.Control {
-		return "control"
-	}
 	if i.State == "working" || i.State == "candidate" {
 		return "unconfirmed"
+	}
+	if i.Control {
+		return "control"
 	}
 	if i.State == "adopted_plan" {
 		return "plan"
@@ -230,6 +230,18 @@ func estimate(p Pack) int {
 }
 
 func Compile(r Request, input []Item) (Pack, error) {
+	return compile(r, input, false)
+}
+
+// CompileLegacyPrivateControl exists only to verify immutable historical
+// archives produced before private control proposals were marked unconfirmed.
+// Runtime context creation and validation must use Compile instead. Replaying
+// the old classification also preserves its exact historical budget decisions.
+func CompileLegacyPrivateControl(r Request, input []Item) (Pack, error) {
+	return compile(r, input, true)
+}
+
+func compile(r Request, input []Item, legacyPrivateControl bool) (Pack, error) {
 	empty := Pack{}
 	if err := validateRequest(r); err != nil || len(input) > 8192 {
 		return empty, ErrInvalid
@@ -308,6 +320,9 @@ func Compile(r Request, input []Item) (Pack, error) {
 			if !selected[id] {
 				item := available[id]
 				entry := Selected{Item: item, Channel: channel(item, r.Scope), Reason: reason}
+				if legacyPrivateControl && item.Control && (item.State == "candidate" || item.State == "working") {
+					entry.Channel = "control"
+				}
 				encoded, _ := json.Marshal(entry)
 				itemCost += (len(encoded) + 1) * 2 // includes a conservative array comma
 				pack.Items = append(pack.Items, entry)

@@ -5,6 +5,16 @@ function Get-PortableRoot {
     Join-Path (Split-Path $script:PortableRepository -Parent) 'work/runtime/toolchain'
 }
 
+function ConvertTo-PortableFileSystemPath([string]$Path) {
+    # Keep logical/receipt paths unchanged. Only the inbox engine's filesystem
+    # operations need a Windows extended-length path for long package members.
+    if ($PSVersionTable.PSVersion.Major -lt 7 -and $Path.Length -ge 248 -and -not $Path.StartsWith('\\?\')) {
+        if ($Path.StartsWith('\\')) { return '\\?\UNC\' + $Path.Substring(2) }
+        return '\\?\' + $Path
+    }
+    $Path
+}
+
 function Resolve-PortableChild([string]$Root, [string]$Relative, [Collections.Generic.HashSet[string]]$CheckedPaths = $null) {
     $fullRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
     $child = [IO.Path]::GetFullPath((Join-Path $fullRoot $Relative))
@@ -15,8 +25,9 @@ function Resolve-PortableChild([string]$Root, [string]$Relative, [Collections.Ge
     $cursor = $child
     while ($cursor) {
         if ($null -ne $CheckedPaths -and $CheckedPaths.Contains($cursor)) { break }
-        if (Test-Path -LiteralPath $cursor) {
-            if ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        $fileSystemCursor = ConvertTo-PortableFileSystemPath $cursor
+        if (Test-Path -LiteralPath $fileSystemCursor) {
+            if ((Get-Item -LiteralPath $fileSystemCursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
                 throw "Reparse point is not allowed in toolchain path: $cursor"
             }
         }
@@ -42,19 +53,21 @@ function Assert-PortablePackage([string]$Directory, $Tool) {
     # Reuse ancestor checks only within this one read-only validation pass.
     $checkedPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $receiptPath = Resolve-PortableChild $Directory '.portable-receipt.json'
-    if (-not (Test-Path -LiteralPath $receiptPath)) { throw "Toolchain receipt missing: $Directory" }
-    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+    $receiptFileSystemPath = ConvertTo-PortableFileSystemPath $receiptPath
+    if (-not (Test-Path -LiteralPath $receiptFileSystemPath)) { throw "Toolchain receipt missing: $Directory" }
+    $receipt = Get-Content -LiteralPath $receiptFileSystemPath -Raw | ConvertFrom-Json
     if ($receipt.archive_sha256 -ne $Tool.sha256 -or $receipt.version -ne $Tool.version -or @($receipt.files).Count -lt 1) {
         throw "Toolchain receipt mismatch: $Directory"
     }
     foreach ($file in $receipt.files) {
         $path = Resolve-PortableChild $Directory $file.path $checkedPaths
-        if (-not (Test-Path -LiteralPath $path) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $file.sha256) {
+        $fileSystemPath = ConvertTo-PortableFileSystemPath $path
+        if (-not (Test-Path -LiteralPath $fileSystemPath) -or (Get-FileHash -LiteralPath $fileSystemPath -Algorithm SHA256).Hash -ne $file.sha256) {
             throw "Toolchain file integrity mismatch: $path"
         }
     }
     $exe = Resolve-PortableChild $Directory $Tool.executable
-    if (-not (Test-Path -LiteralPath $exe)) { throw "Toolchain executable missing: $exe" }
+    if (-not (Test-Path -LiteralPath (ConvertTo-PortableFileSystemPath $exe))) { throw "Toolchain executable missing: $exe" }
     $exe
 }
 

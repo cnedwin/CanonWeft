@@ -137,6 +137,7 @@ func validateMemoryContextsWithEvidence(d Data, evidence map[string]retention.Ex
 				return errors.New("memory context identity or hash mismatch")
 			}
 			items := make([]memory.Item, 0, len(pack.Items))
+			legacyPrivateControl := false
 			for _, selected := range pack.Items {
 				original, exists := revisions[selected.Item.Revision]
 				if !exists {
@@ -150,8 +151,19 @@ func validateMemoryContextsWithEvidence(d Data, evidence map[string]retention.Ex
 					return errors.New("memory context changed its pinned revision")
 				}
 				items = append(items, selected.Item)
+				if selected.Channel == "control" && selected.Item.Control && (selected.Item.State == "candidate" || selected.Item.State == "working") {
+					legacyPrivateControl = true
+				}
 			}
-			compiled, err := memory.Compile(pack.Request, items)
+			var compiled memory.Pack
+			if legacyPrivateControl {
+				// Preserve the immutable old classification only for archive
+				// verification. Runtime always recompiles with current semantics,
+				// so this does not restore execution eligibility or alter hashes.
+				compiled, err = memory.CompileLegacyPrivateControl(pack.Request, items)
+			} else {
+				compiled, err = memory.Compile(pack.Request, items)
+			}
 			if err != nil || len(compiled.Items) != len(items) {
 				return errors.New("memory context contains unavailable private or temporal material")
 			}

@@ -86,6 +86,8 @@ const allText = computed(() =>
 const findings = computed(() => editorialFindings(allText.value));
 let disposed = false,
   timer: ReturnType<typeof setTimeout> | undefined;
+let stateRequest = 0,
+  stateWatermark = 0;
 function fail(e: unknown) {
   error.value = message(e);
   if (e instanceof APIError && e.status === 401) emit("expired");
@@ -112,6 +114,20 @@ function belongs(run: RecipeRun) {
     input?.book_id === props.book.id
   );
 }
+function installSelected(run: RecipeRun) {
+  selected.value = run;
+  // Already in-flight snapshots have no newer accounting revision to compare.
+  stateWatermark = stateRequest;
+}
+function updateSelected(run: RecipeRun, request: number) {
+  if (
+    !disposed &&
+    selected.value?.id === run.id &&
+    (run.revision > selected.value.revision ||
+      (run.revision === selected.value.revision && request > stateWatermark))
+  )
+    installSelected(run);
+}
 async function refresh() {
   const value = await api<{ items: RecipeRun[] }>(
     `${recipes}?branch_id=${props.book.branch_id}`,
@@ -120,8 +136,9 @@ async function refresh() {
   runs.value = value.items.filter(belongs);
   const id = selected.value?.id;
   if (id) {
+    const request = ++stateRequest;
     const run = await api<RecipeRun>(`${recipes}/${id}`);
-    if (!disposed && selected.value?.id === id) selected.value = run;
+    updateSelected(run, request);
   }
 }
 async function prepare() {
@@ -135,6 +152,7 @@ async function prepare() {
     const micros = Math.round(Number(budget.value) * 1000000);
     if (!Number.isSafeInteger(micros) || micros < 1 || micros > 1000000000000)
       throw new Error("请填写本批总费用上限；准备请求不会发起模型调用。");
+    ++stateRequest;
     const run = await api<RecipeRun>(root, "POST", {
       chapter_ids: selection.value.map((c) => c.id),
       platform: platform.value,
@@ -151,7 +169,7 @@ async function prepare() {
       operation_id: operation.value,
     });
     if (disposed) return;
-    selected.value = run;
+    installSelected(run);
     candidate.value = null;
     original.value = null;
     operation.value = newOperationID();
@@ -164,6 +182,7 @@ async function control(action: string) {
   await perform(async () => {
     if (!selected.value) return;
     const run = selected.value;
+    const request = ++stateRequest;
     const value = await api<RecipeRun>(
       `${recipes}/${run.id}/${action === "start" ? "start" : "control"}`,
       "POST",
@@ -172,14 +191,16 @@ async function control(action: string) {
         ...(action === "start" ? {} : { action }),
       },
     );
-    if (!disposed && selected.value?.id === run.id) selected.value = value;
+    updateSelected(value, request);
   });
 }
 async function choose(id: string) {
   await perform(async () => {
+    const request = ++stateRequest;
     const run = await api<RecipeRun>(`${recipes}/${id}`);
     if (!disposed) {
-      selected.value = run;
+      if (selected.value?.id === run.id) updateSelected(run, request);
+      else installSelected(run);
       candidate.value = null;
       original.value = null;
     }
@@ -224,13 +245,14 @@ async function retry(step: BatchStage) {
   await perform(async () => {
     if (!selected.value) return;
     const run = selected.value;
+    const request = ++stateRequest;
     const value = await api<RecipeRun>(`${recipes}/${run.id}/retry`, "POST", {
       expected_revision: run.revision,
       operation_id: newOperationID(),
       step: step.frozen.input,
     });
     if (!disposed && selected.value?.id === run.id) {
-      selected.value = value;
+      updateSelected(value, request);
       notice.value = "已建立新的尝试；依赖本章的后续章节也会重新生成。";
     }
   });

@@ -1,6 +1,7 @@
 import { createApp, h } from "vue";
 import NovelWorkspace from "../../src/features/novel/NovelWorkspace.vue";
 import NovelChapterEditor from "../../src/features/novel/NovelChapterEditor.vue";
+import NovelBatchDesk from "../../src/features/novel/NovelBatchDesk.vue";
 import "../../src/style.css";
 
 const book = {
@@ -33,9 +34,10 @@ const props = {
   },
 };
 const editor = new URLSearchParams(location.search).has("editor");
+const batch = new URLSearchParams(location.search).has("batch");
 createApp({
   render: () =>
-    h(editor ? NovelChapterEditor : NovelWorkspace, {
+    h(batch ? NovelBatchDesk : editor ? NovelChapterEditor : NovelWorkspace, {
       ...props,
       chapterId: "chapter",
     } as never),

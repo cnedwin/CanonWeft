@@ -27,9 +27,20 @@ function Expand-PortableArchive([string]$Archive, [string]$Destination, $Tool) {
         try {
             foreach ($entry in $zip.Entries) {
                 $null = Resolve-PortableChild $Destination $entry.FullName $checkedPaths
+                # Native ZIP extraction understands Unix links and Windows
+                # reparse attributes. Refuse those before it can create one.
+                $unixType = ($entry.ExternalAttributes -shr 16) -band 0xF000
+                if ($unixType -notin @(0, 0x4000, 0x8000) -or ($entry.ExternalAttributes -band 0x400)) {
+                    throw "Unsupported ZIP entry type: $($entry.FullName)"
+                }
             }
         } finally { $zip.Dispose() }
-        [IO.Compression.ZipFile]::ExtractToDirectory($Archive, $Destination)
+        # .NET Framework's ZIP writer retains MAX_PATH under Windows
+        # PowerShell 5.1. Windows tar supports long destination/member paths.
+        $tar = Join-Path $env:SystemRoot 'System32/tar.exe'
+        if (-not (Test-Path -LiteralPath $tar)) { throw 'Windows tar.exe missing; Windows 10 1809 or newer is required.' }
+        & $tar -xf $Archive -C $Destination
+        if ($LASTEXITCODE) { throw 'Cannot extract verified ZIP archive' }
     } elseif ($Tool.format -eq 'tar.gz') {
         $tar = Join-Path $env:SystemRoot 'System32/tar.exe'
         if (-not (Test-Path -LiteralPath $tar)) { throw 'Windows tar.exe missing; Windows 10 1809 or newer is required.' }
@@ -44,8 +55,8 @@ function Expand-PortableArchive([string]$Archive, [string]$Destination, $Tool) {
 function Install-PortablePackage($Tool) {
     $destination = Resolve-PortableChild $ToolchainRoot $Tool.directory
     if (Test-Path -LiteralPath $destination) {
-        # The single final Enable pass checks every existing package before
-        # any executable runs; do not hash it twice on an ordinary restart.
+        # Enable checks existing packages before application use. The PS5
+        # bootstrap separately verifies its pinned PS7 before handing over.
         Write-Host "Found existing $($Tool.name) $($Tool.version); verifying before use"
         return
     }
@@ -75,13 +86,13 @@ function Install-PortablePackage($Tool) {
         Move-Item -LiteralPath $partial -Destination $archive
     }
     Assert-PortableArchive $archive $Tool.sha256
-    # Keep staging shorter than final paths: Windows PowerShell 5.1's ZIP API
-    # still applies MAX_PATH, and npm contains deeply nested package files.
+    # Keep staging paths short for downstream consumers; verified system tar
+    # handles the deeply nested ZIP members without Framework ZIP limits.
     $staging = Resolve-PortableChild $ToolchainRoot ('s-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     Expand-PortableArchive $archive $staging $Tool
     $files = @(Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object {
         if ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Archive contains reparse point' }
-        [ordered]@{ path = $_.FullName.Substring($staging.Length + 1); sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+        [ordered]@{ path = $_.FullName.Substring($staging.Length + 1); sha256 = (Get-FileHash -LiteralPath (ConvertTo-PortableFileSystemPath $_.FullName) -Algorithm SHA256).Hash.ToLowerInvariant() }
     })
     [ordered]@{ version = $Tool.version; archive_sha256 = $Tool.sha256; files = $files } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $staging '.portable-receipt.json') -Encoding UTF8
@@ -92,6 +103,30 @@ function Install-PortablePackage($Tool) {
 }
 
 $lockHandle = $null
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    # The inbox engine is the bootstrap, not the long-path file verifier.
+    # Hash the first PowerShell package before executing it, then continue in
+    # that exact engine so Framework path limits cannot omit package files.
+    try {
+        $powerShellTool = (Get-PortableLock).tools | Where-Object name -eq 'PowerShell'
+        if (-not $VerifyOnly) {
+            New-Item -ItemType Directory -Path $ToolchainRoot -Force | Out-Null
+            $bootstrapLock = Resolve-PortableChild $ToolchainRoot '.install.lock'
+            $lockHandle = [IO.File]::Open($bootstrapLock, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+            Install-PortablePackage $powerShellTool
+        }
+        $powerShellDirectory = Resolve-PortableChild $ToolchainRoot $powerShellTool.directory
+        $bootstrapPowerShell = Assert-PortablePackage $powerShellDirectory $powerShellTool
+    } finally {
+        if ($lockHandle) { $lockHandle.Dispose(); $lockHandle = $null }
+    }
+    $continuationArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath, '-ToolchainRoot', $ToolchainRoot)
+    if ($VerifyOnly) { $continuationArguments += '-VerifyOnly' }
+    if ($Launch) { $continuationArguments += '-Launch' }
+    if ($NoBuild) { $continuationArguments += '-NoBuild' }
+    & $bootstrapPowerShell @continuationArguments
+    exit $LASTEXITCODE
+}
 try {
     $lockPath = Resolve-PortableChild $ToolchainRoot '.install.lock'
     if (-not $VerifyOnly) {
