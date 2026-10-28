@@ -172,6 +172,9 @@ interface Task {
 }
 const root = `/projects/${props.project.id}/generations`;
 const options = ref<Option[]>([]);
+const optionsLoading = ref(false);
+const optionsLoaded = ref(false);
+const optionsError = ref("");
 const selected = ref(
   props.assistance?.role ??
     (props.characters ? "character_designer" : props.planning?.role) ??
@@ -707,19 +710,32 @@ async function poll() {
   if (!disposed)
     timer = setTimeout(poll, current.value?.state === "RUNNING" ? 650 : 2500);
 }
-onMounted(async () => {
-  window.addEventListener("beforeunload", unload);
+async function loadOptions() {
+  if (disposed || optionsLoading.value || busy.value) return;
+  optionsLoading.value = true;
+  optionsError.value = "";
   try {
     const response = await read<{ items: Option[] }>(
       `/projects/${props.project.id}/generation-options`,
     );
     if (!disposed) {
       options.value = response.items;
-      if (props.planning) selected.value = props.planning.role;
+      optionsLoaded.value = true;
     }
   } catch (e) {
-    if (!disposed) fail(e);
+    if (!disposed) {
+      optionsError.value = message(e);
+      if (e instanceof APIError && [401, 403].includes(e.status))
+        options.value = [];
+      if (e instanceof APIError && e.status === 401) emit("expired");
+    }
+  } finally {
+    if (!disposed) optionsLoading.value = false;
   }
+}
+onMounted(async () => {
+  window.addEventListener("beforeunload", unload);
+  await loadOptions();
   void poll();
 });
 onBeforeUnmount(() => {
@@ -751,7 +767,17 @@ onBeforeUnmount(() => {
     <p class="muted">
       公共生成工具。先保存请求与估算，明确执行后才调用模型。结果作为候选保留，不自动进入正史或正文。
     </p>
-    <p v-if="!options.length" class="muted">
+    <p v-if="optionsLoading" class="muted" role="status">正在加载模型选项…</p>
+    <p v-if="optionsError" class="error" role="alert">{{ optionsError }}</p>
+    <button
+      type="button"
+      class="quiet"
+      :disabled="busy || optionsLoading"
+      @click="loadOptions"
+    >
+      {{ optionsError ? "重试加载模型选项" : "刷新模型选项" }}
+    </button>
+    <p v-if="optionsLoaded && !options.length && !optionsError" class="muted">
       尚无可用用途。请先在模型设置中填写
       Key、绑定专业用途，并保存适用于该配置版本的价格。
     </p>
@@ -825,7 +851,8 @@ onBeforeUnmount(() => {
             required
         /></label>
         <div class="actions">
-          <button>保存请求并估算费用</button
+          <button :disabled="optionsLoading || !!optionsError">
+            保存请求并估算费用</button
           ><button type="button" class="quiet" @click="discard">
             清空输入
           </button>

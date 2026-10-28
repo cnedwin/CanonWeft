@@ -68,6 +68,7 @@ document.getElementById("scope").addEventListener("click", () => { changed.value
     entered = resolve;
   });
   let recovering = false;
+  let nextOptionFailure: "hang" | 403 | 503 | undefined;
   const task = {
     id: "task-111111",
     state: mode === "preview" ? "SUCCEEDED" : "RUNNING",
@@ -123,12 +124,20 @@ document.getElementById("scope").addEventListener("click", () => { changed.value
         .end(JSON.stringify(value));
     if (path.endsWith("/generation-options")) {
       counts.options++;
-      if (mode === "options" && counts.options === 1) {
+      const failure = nextOptionFailure;
+      nextOptionFailure = undefined;
+      if ((mode === "options" && counts.options === 1) || failure === "hang") {
         counts.hangs++;
         response.on("close", () => {
           counts.aborted++;
         });
         entered();
+        return;
+      }
+      if (failure) {
+        response
+          .writeHead(failure, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "模型选项读取失败" }));
         return;
       }
       json({
@@ -250,6 +259,9 @@ document.getElementById("scope").addEventListener("click", () => { changed.value
   );
   const state = {
     counts,
+    failNextOptions: (failure: "hang" | 403 | 503) => {
+      nextOptionFailure = failure;
+    },
     recover: () => {
       recovering = true;
     },
@@ -341,6 +353,76 @@ test("初始化options超时仍应启动只读poll且不出现付费准备入口
       page.getByRole("button", { name: "保存请求并估算费用", exact: true }),
     ).toHaveCount(0);
     await expect(page.locator(".generation-task")).toContainText("请求已发送");
+    expect(state.counts.writes).toEqual([]);
+  } finally {
+    await state.close();
+  }
+});
+
+test("模型选项原地重试恢复，刷新失败保留手改且权限拒绝清除旧选项", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, "options");
+  try {
+    await page.clock.fastForward(readTimeoutMs);
+    await page
+      .getByRole("button", { name: "重试加载模型选项", exact: true })
+      .click();
+    const prompt = page.getByLabel("希望 AI 协助的内容", { exact: true });
+    await expect(prompt).toBeVisible();
+    await prompt.fill("保留这段作者修改，不发起模型请求");
+    await page.getByLabel("最大输出 token", { exact: true }).fill("2048");
+    state.failNextOptions(503);
+    await page
+      .getByRole("button", { name: "刷新模型选项", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "重试加载模型选项", exact: true }),
+    ).toBeVisible();
+    await expect(prompt).toHaveValue("保留这段作者修改，不发起模型请求");
+    await page
+      .getByRole("button", { name: "重试加载模型选项", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "刷新模型选项", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      page.getByLabel("最大输出 token", { exact: true }),
+    ).toHaveValue("2048");
+    state.failNextOptions(403);
+    await page
+      .getByRole("button", { name: "刷新模型选项", exact: true })
+      .click();
+    await expect(prompt).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "重试加载模型选项", exact: true })
+      .click();
+    await expect(prompt).toHaveValue("保留这段作者修改，不发起模型请求");
+    expect(state.counts.writes).toEqual([]);
+  } finally {
+    await state.close();
+  }
+});
+
+test("切换作品时取消挂起的模型选项重试，旧错误不回写新作品", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, "options");
+  try {
+    await page.clock.fastForward(readTimeoutMs);
+    state.failNextOptions("hang");
+    await page
+      .getByRole("button", { name: "重试加载模型选项", exact: true })
+      .click();
+    await expect.poll(() => state.counts.options).toBe(2);
+    await page.locator("#scope").click();
+    await expect.poll(() => state.counts.aborted).toBe(2);
+    await expect(
+      page.getByLabel("希望 AI 协助的内容", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.clock.fastForward(readTimeoutMs + 2500);
+    await expect(page.getByRole("alert")).toHaveCount(0);
     expect(state.counts.writes).toEqual([]);
   } finally {
     await state.close();
