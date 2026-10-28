@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { newOperationID, api, APIError, message } from "../../api";
+import { useModelReads } from "./modelReads";
+const { read } = useModelReads();
 interface Call {
   id: string;
   state: string;
@@ -88,7 +90,7 @@ function micros(value: string) {
   return Number(result);
 }
 async function perform(work: () => Promise<void>) {
-  if (busy.value) return;
+  if (busy.value || disposed) return;
   busy.value = true;
   error.value = "";
   notice.value = "";
@@ -97,14 +99,21 @@ async function perform(work: () => Promise<void>) {
   } catch (e) {
     if (!disposed) {
       error.value = message(e);
+      if (e instanceof APIError && [401, 403].includes(e.status)) {
+        calls.value = [];
+        current.value = null;
+        history.value = { adjustments: [], receipts: [] };
+        next.value = "";
+        clear();
+      }
       if (e instanceof APIError && e.status === 401) emit("expired");
     }
   } finally {
-    busy.value = false;
+    if (!disposed) busy.value = false;
   }
 }
 async function load(more = false) {
-  const data = await api<{ items: Call[]; next_cursor: string }>(
+  const data = await read<{ items: Call[]; next_cursor: string }>(
     `/model-calls${more ? `?after=${next.value}` : ""}`,
   );
   if (disposed) return;
@@ -121,7 +130,7 @@ function clear() {
 async function select(call: Call) {
   if (dirty.value) return;
   await perform(async () => {
-    const data = await api<History>(`/model-calls/${call.id}/history`);
+    const data = await read<History>(`/model-calls/${call.id}/history`);
     if (disposed) return;
     current.value = call;
     history.value = data;
@@ -159,7 +168,9 @@ async function record() {
     );
     clear();
     emit("recorded");
-    history.value = await api<History>(`/model-calls/${call.id}/history`);
+    const latest = await read<History>(`/model-calls/${call.id}/history`);
+    if (disposed) return;
+    history.value = latest;
     notice.value = "账单记录已保存，按差额更新本地记账；未发送任何模型请求。";
   });
 }
