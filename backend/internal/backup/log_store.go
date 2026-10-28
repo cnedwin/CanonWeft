@@ -365,7 +365,7 @@ func (s *LogStore) load(ctx context.Context, id string, now time.Time) (*LogRepl
 		if e != nil {
 			return nil, nil, nil, e
 		}
-		if e = r.ApplySegment(raw, hash); e != nil {
+		if e = r.ApplySegmentContext(ctx, raw, hash); e != nil {
 			return nil, nil, nil, e
 		}
 		if r.Point().ObservedAt.After(now.Add(time.Minute)) {
@@ -402,7 +402,7 @@ func (s *LogStore) Append(ctx context.Context, id string, raw []byte, now time.T
 	if slices.Contains(order, name) {
 		return r.Point(), nil
 	}
-	if err = r.ApplySegment(raw, hash); err != nil {
+	if err = r.ApplySegmentContext(ctx, raw, hash); err != nil {
 		return LogPoint{}, err
 	}
 	if r.Point().ObservedAt.After(now.Add(time.Minute)) {

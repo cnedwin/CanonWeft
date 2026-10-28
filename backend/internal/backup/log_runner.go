@@ -274,11 +274,13 @@ func (r *LogRunner) tick(ctx context.Context, now time.Time, force bool) (result
 	return result, nil
 }
 func (r *LogRunner) collect(ctx context.Context, id string) (LogPoint, error) {
+	ctx, cancel := context.WithTimeout(ctx, binlog.ReadTimeout)
+	defer cancel()
 	replay, err := r.Store.Load(ctx, id, time.Now().UTC())
 	if err != nil {
 		return LogPoint{}, err
 	}
-	return replay.CaptureSegments(ctx, r.db, r.reader, r.blobs, func(raw []byte) (LogPoint, error) {
+	return replay.CaptureSegments(ctx, r.db, r.reader, r.blobs, func(ctx context.Context, raw []byte) (LogPoint, error) {
 		return r.Store.Append(ctx, id, raw, time.Now().UTC())
 	})
 }

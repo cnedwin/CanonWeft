@@ -41,6 +41,10 @@ func TestLogBatchActualThousandTransactionsKeepDurablePrefixAndResume(t *testing
 	}
 	for _, mode := range []string{"complete range", "publication failure", "cancel after durable prefix"} {
 		t.Run(mode, func(t *testing.T) {
+			// Each independent capture/recovery scenario gets its own budget;
+			// earlier scenarios must not consume a later scenario's deadline.
+			ctx, stop := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer stop()
 			journalPath := filepath.Join(t.TempDir(), "journal")
 			journal, err := backup.OpenLogStore(journalPath, baseline.Source)
 			if err != nil {
@@ -65,7 +69,7 @@ func TestLogBatchActualThousandTransactionsKeepDurablePrefixAndResume(t *testing
 			var first backup.LogPoint
 			var expectedPrefix []byte
 			intentional := errors.New("intentional second publication failure")
-			point, err := replay.CaptureSegments(capture, f.db, reader, f.blobs, func(raw []byte) (backup.LogPoint, error) {
+			point, err := replay.CaptureSegments(capture, f.db, reader, f.blobs, func(capture context.Context, raw []byte) (backup.LogPoint, error) {
 				calls++
 				var segment backup.LogSegment
 				if err := json.Unmarshal(raw, &segment); err != nil {
@@ -143,7 +147,9 @@ func TestLogBatchActualThousandTransactionsKeepDurablePrefixAndResume(t *testing
 			if expectedPrefix != nil && !bytes.Equal(prefix.Data["workspaces"][0][1], expectedPrefix) {
 				t.Fatal("prefix includes unpublished source changes")
 			}
-			resumed, err := recovered.CaptureSegments(ctx, f.db, reader, f.blobs, func(raw []byte) (backup.LogPoint, error) { return journal.Append(ctx, id, raw, time.Now().UTC()) })
+			resumed, err := recovered.CaptureSegments(ctx, f.db, reader, f.blobs, func(ctx context.Context, raw []byte) (backup.LogPoint, error) {
+				return journal.Append(ctx, id, raw, time.Now().UTC())
+			})
 			if err != nil {
 				t.Fatal("resume after durable prefix failed", err)
 			}

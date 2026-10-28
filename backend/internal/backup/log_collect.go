@@ -18,7 +18,7 @@ import (
 // It does not advance the durable point: publish first, then ApplySegment.
 func (r *LogReplay) CaptureSegment(ctx context.Context, db *sql.DB, reader *binlog.Reader, blobs storage.BlobStore) ([]byte, error) {
 	var raw []byte
-	err := r.withLogCapture(ctx, db, reader, func(source queryer, layouts []binlog.TableSchema, through binlog.Position, observed time.Time) error {
+	err := r.withLogCapture(ctx, db, reader, func(ctx context.Context, source queryer, layouts []binlog.TableSchema, through binlog.Position, observed time.Time) error {
 		var transactions []binlog.Transaction
 		var rows int
 		var size int64
@@ -52,15 +52,15 @@ func (r *LogReplay) CaptureSegment(ctx context.Context, db *sql.DB, reader *binl
 // durably append these bytes and return their exact point. An error returns the
 // last acknowledged prefix, never a claim of coverage through the unread tail.
 // An ambiguous publish error requires reloading the repository before retrying.
-func (r *LogReplay) CaptureSegments(ctx context.Context, db *sql.DB, reader *binlog.Reader, blobs storage.BlobStore, publish func([]byte) (LogPoint, error)) (LogPoint, error) {
+func (r *LogReplay) CaptureSegments(ctx context.Context, db *sql.DB, reader *binlog.Reader, blobs storage.BlobStore, publish func(context.Context, []byte) (LogPoint, error)) (LogPoint, error) {
 	if r == nil || publish == nil {
 		return LogPoint{}, errors.New("log capture publisher unavailable")
 	}
-	err := r.withLogCapture(ctx, db, reader, func(source queryer, layouts []binlog.TableSchema, through binlog.Position, observed time.Time) error {
+	err := r.withLogCapture(ctx, db, reader, func(ctx context.Context, source queryer, layouts []binlog.TableSchema, through binlog.Position, observed time.Time) error {
 		if observed.Before(r.point.ObservedAt) {
 			return errors.New("source observation clock moved backwards")
 		}
-		batch := newLogCaptureBatch(ctx, r, blobs, observed, publish)
+		batch := newLogCaptureBatch(ctx, r, blobs, observed, func(raw []byte) (LogPoint, error) { return publish(ctx, raw) })
 		if err := reader.ReadRange(ctx, r.baseline.Source.Database, layouts, r.point.Position, through, func(tx binlog.Transaction) error {
 			clean, err := prepareSourceLogTransaction(ctx, source, r.baseline.Tables, tx, r.baseline.Schema)
 			if err != nil {
@@ -78,13 +78,17 @@ func (r *LogReplay) CaptureSegments(ctx context.Context, db *sql.DB, reader *bin
 
 // Both capture APIs share the same verified source connection, schema lease,
 // catalog checks, clock observation and final source coordinate.
-func (r *LogReplay) withLogCapture(ctx context.Context, db *sql.DB, reader *binlog.Reader, consumeRange func(queryer, []binlog.TableSchema, binlog.Position, time.Time) error) error {
+func (r *LogReplay) withLogCapture(ctx context.Context, db *sql.DB, reader *binlog.Reader, consumeRange func(context.Context, queryer, []binlog.TableSchema, binlog.Position, time.Time) error) error {
 	if r == nil || db == nil || reader == nil {
 		return errors.New("log capture dependencies unavailable")
 	}
 	if reader.ExpectedServerUUID() != r.baseline.Source.ServerUUID {
 		return errors.New("log reader belongs to a different source")
 	}
+	// Closing the replication socket cannot cancel its synchronous consumer.
+	// The schema lease, JSON rendering, validation and publish share one budget.
+	ctx, cancel := context.WithTimeout(ctx, binlog.ReadTimeout)
+	defer cancel()
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return errors.New("log capture source unavailable")
@@ -132,7 +136,7 @@ func (r *LogReplay) withLogCapture(ctx context.Context, db *sql.DB, reader *binl
 	for _, table := range tables {
 		layouts = append(layouts, table.Layout)
 	}
-	return consumeRange(conn, layouts, through, observed)
+	return consumeRange(ctx, conn, layouts, through, observed)
 }
 
 type logCaptureLimits struct {
@@ -212,7 +216,7 @@ func (b *logCaptureBatch) flushTransactions(transactions []binlog.Transaction, t
 	if err := b.ctx.Err(); err != nil {
 		return err
 	}
-	raw, err := b.replay.PrepareSegment(b.ctx, b.blobs, through, observed, transactions)
+	prepared, err := b.replay.prepareSegment(b.ctx, b.blobs, through, observed, transactions)
 	if errors.Is(err, errLogSegmentCapacity) {
 		if len(transactions) == 1 {
 			return fmt.Errorf("single log transaction exceeds segment capacity: %w", err)
@@ -233,6 +237,7 @@ func (b *logCaptureBatch) flushTransactions(transactions []binlog.Transaction, t
 	if err != nil {
 		return err
 	}
+	raw := prepared.raw
 	expected := b.replay.Point()
 	expected.Position, expected.ObservedAt, expected.Hash = through, observed, digest(raw)
 	if len(transactions) > 0 {
@@ -247,7 +252,10 @@ func (b *logCaptureBatch) flushTransactions(transactions []binlog.Transaction, t
 	}
 	// Even if cancellation arrived during publish, this acknowledged prefix is
 	// already durable. Apply it before returning cancellation at the next boundary.
-	if err := b.replay.ApplySegment(raw, expected.Hash); err != nil {
+	// Preparation already validated every intermediate state. Install that
+	// exact state after its durable acknowledgement, even if cancellation has
+	// arrived, rather than starting another uncancellable full replay.
+	if err := prepared.apply(b.replay); err != nil {
 		return err
 	}
 	return nil

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,8 @@ import (
 
 	"novelstudio/internal/backup"
 	"novelstudio/internal/binlog"
+	"novelstudio/internal/domain"
+	"novelstudio/internal/retention"
 	"novelstudio/internal/service"
 	"novelstudio/internal/storage"
 )
@@ -24,7 +27,45 @@ func TestLogRecoveryRestoresExactMiddleCommitObjectsAndDisablesAuthority(t *test
 	branch, resource := service.NewID(), service.NewID()
 	before, middle, later := f.put(t, "原稿"), f.put(t, "需要找回的中间修订"), f.put(t, "不应提前进入中间恢复点的后稿")
 	execute(t, f.db, "INSERT INTO branches(id,project_id,name) VALUES(?,?,'main')", branch, f.project)
-	execute(t, f.db, "INSERT INTO resources(id,project_id,branch_id,name,kind,content_hash) VALUES(?,?,?,'正文','document',?)", resource, f.project, branch, before)
+	execute(t, f.db, "INSERT INTO resources(id,project_id,branch_id,name,kind) VALUES(?,?,?,'正文','document')", resource, f.project, branch)
+	// Match the published-resource fixture used by retention snapshot tests:
+	// a nonempty resource body must have a real published manifest as its head.
+	// Capture the old and new source values in the same commit as each change.
+	publish := func(hash string, size int64) {
+		t.Helper()
+		release := service.NewID()
+		manifest := domain.Manifest{Schema: 1, ReleaseID: release, BranchID: branch, Artifacts: []domain.ArtifactRef{{ResourceID: resource, Hash: hash, Size: size}}}
+		manifestRaw, err := json.Marshal(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		object, err := f.blobs.PutObject(ctx, f.project, bytes.NewReader(manifestRaw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tx, err := f.db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		resourceKey := retention.SourceKey{Table: "resources", Primary: map[string]string{"id": resource}}
+		if err = retention.CaptureSourceValuesWithObjects(ctx, tx, f.ledger, f.project, f.blobs.ReadObject, resourceKey); err != nil {
+			t.Fatal("capture previous resource source", err)
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT INTO artifact_releases(id,project_id,branch_id,manifest,content_hash,status,created_by,adopted_by,adopted_hash) VALUES(?,?,?,?,?,'PUBLISHED',?,?,?)", release, f.project, branch, string(manifestRaw), object.Hash, f.user, f.user, object.Hash); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE resources SET head_revision=?,content_hash=?,revision=revision+1 WHERE id=?", release, hash, resource); err != nil {
+			t.Fatal(err)
+		}
+		if err = retention.CaptureSourceValuesWithObjects(ctx, tx, f.ledger, f.project, f.blobs.ReadObject, resourceKey, retention.SourceKey{Table: "artifact_releases", Primary: map[string]string{"id": release}}); err != nil {
+			t.Fatal("capture published resource source", err)
+		}
+		if err = tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publish(before, int64(len("原稿")))
 	path := filepath.Join(f.root, "baseline.zip")
 	baseline, _, err := backup.CreateLogBaseline(ctx, f.db, f.blobs, path)
 	if err != nil {
@@ -38,13 +79,13 @@ func TestLogRecoveryRestoresExactMiddleCommitObjectsAndDisablesAuthority(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	execute(t, f.db, "UPDATE resources SET content_hash=?,revision=revision+1 WHERE id=?", middle, resource)
+	publish(middle, int64(len("需要找回的中间修订")))
 	var selected binlog.Position
 	var included, excluded, gtids string
 	if err := f.db.QueryRowContext(ctx, "SHOW BINARY LOG STATUS").Scan(&selected.File, &selected.Offset, &included, &excluded, &gtids); err != nil {
 		t.Fatal(err)
 	}
-	execute(t, f.db, "UPDATE resources SET content_hash=?,revision=revision+1 WHERE id=?", later, resource)
+	publish(later, int64(len("不应提前进入中间恢复点的后稿")))
 	password := "PASSWORD_MUST_NOT_ENTER_PROJECT_LOG"
 	execute(t, f.db, "UPDATE users SET password_hash=? WHERE id=?", password, f.user)
 	execute(t, f.db, "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,UTC_TIMESTAMP(6)+INTERVAL 1 DAY)", service.NewID()+service.NewID(), f.user)
