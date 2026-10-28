@@ -73,3 +73,5 @@ if ($Case -in @('All', 'Network')) {
 
 if ($failures.Count -gt 0) { throw ($failures -join "`n") }
 Write-Output 'Entrypoint checks passed without starting application services.'
+# Expected failing fixture processes must not become this script's exit status.
+exit 0
