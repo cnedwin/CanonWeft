@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"novelstudio/internal/authority"
 	"novelstudio/internal/backup"
+	"novelstudio/internal/hostsignals"
 	"novelstudio/internal/httpapi"
 	"novelstudio/internal/service"
 	"novelstudio/internal/storage"
@@ -86,7 +86,7 @@ func run() error {
 		}
 		defer runtime.Close()
 	}
-	stopped, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	stopped, stop := hostsignals.NotifyContext(context.Background())
 	defer stop()
 	protection, stopProtection, err := startProtection(stopped, db, source.Database)
 	if err != nil {
