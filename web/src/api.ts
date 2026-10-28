@@ -25,6 +25,7 @@ export async function api<T>(
   path: string,
   method = "GET",
   body?: unknown,
+  options?: { signal?: AbortSignal },
 ): Promise<T> {
   let response: Response;
   try {
@@ -33,17 +34,29 @@ export async function api<T>(
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: options?.signal,
     });
   } catch {
     throw new APIError("暂时无法连接工作室。你的输入仍然保留，可以重试。", 0);
   }
-  const data = await response.json();
+  const data = await response.json().catch((error: unknown) => {
+    if (!response.ok)
+      throw new APIError(
+        "请求未获成功响应，请核对权限或状态。",
+        response.status,
+      );
+    throw error;
+  });
   if (!response.ok)
     throw new APIError(
-      data.error ?? data.message ?? "操作未完成，请重试",
+      data?.error ?? data?.message ?? "操作未完成，请重试",
       response.status,
-      data.fields && typeof data.fields === "object"
-        ? Object.fromEntries(Object.entries(data.fields).filter(([, value]) => typeof value === "string")) as Record<string, string>
+      data?.fields && typeof data.fields === "object"
+        ? (Object.fromEntries(
+            Object.entries(data.fields).filter(
+              ([, value]) => typeof value === "string",
+            ),
+          ) as Record<string, string>)
         : {},
     );
   return data as T;

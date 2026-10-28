@@ -277,6 +277,30 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let selection = 0;
 let selecting = false;
 let listEpoch = 0;
+const pendingReads = new Set<AbortController>();
+const stateReadTimeout = 15000;
+const previewReadTimeout = 60000;
+async function read<T>(path: string, timeout = stateReadTimeout): Promise<T> {
+  if (disposed) throw new APIError("读取已停止。", 0);
+  const controller = new AbortController();
+  pendingReads.add(controller);
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeout);
+  try {
+    return await api<T>(path, "GET", undefined, { signal: controller.signal });
+  } catch (e) {
+    if (e instanceof APIError && e.status !== 0) throw e;
+    if (timedOut)
+      throw new APIError("读取超时，输入仍然保留。请稍后重新查看。", 0);
+    throw e;
+  } finally {
+    clearTimeout(deadline);
+    pendingReads.delete(controller);
+  }
+}
 watch(
   [
     () => current.value?.id,
@@ -297,7 +321,10 @@ async function previewRepair() {
   const seq = selection;
   await perform(async () => {
     repair.value = null;
-    const result = await api<RepairPreview>(`${root}/${task.id}/patches`);
+    const result = await read<RepairPreview>(
+      `${root}/${task.id}/patches`,
+      previewReadTimeout,
+    );
     if (!disposed && seq === selection && current.value?.id === task.id) {
       setRepairPreview(result);
       checkedDecisionKey.value = "[]";
@@ -383,7 +410,7 @@ async function refresh(afterMutation = false) {
   // Background polls are serialized; a mutation supersedes their old reads.
   const epoch = afterMutation ? ++listEpoch : listEpoch;
   try {
-    const response = await api<{ items: Task[]; runtime_ready: boolean }>(
+    const response = await read<{ items: Task[]; runtime_ready: boolean }>(
       `${root}?branch=${props.branch.id}${props.assistance ? `&creative=${encodeURIComponent(props.assistance.kind)}&creative_target=${encodeURIComponent(props.assistance.target ?? String(props.assistance.payload.character_id ?? props.assistance.payload.setup_id ?? ""))}` : ""}`,
     );
     if (disposed || epoch !== listEpoch) return;
@@ -425,7 +452,7 @@ async function inspect(task: Task, background = false) {
   const seq = background ? selection : ++selection;
   if (!background) selecting = true;
   try {
-    const result = await api<Task>(`${root}/${task.id}`);
+    const result = await read<Task>(`${root}/${task.id}`);
     if (!disposed && seq === selection) current.value = result;
   } catch (e) {
     if (!disposed && seq === selection) {
@@ -593,14 +620,18 @@ async function previewChapter() {
   const seq = selection;
   await perform(async () => {
     if (writing.role === "bookkeeper") {
-      const result = await api<LedgerDraft>(
+      const result = await read<LedgerDraft>(
         `${writing.root}/bookkeeper/${task.id}`,
+        previewReadTimeout,
       );
       if (!disposed && seq === selection && current.value?.id === task.id)
         emit("ledgerSuggestion", result);
       return;
     }
-    const result = await api<ChapterDraft>(`${writing.root}/writer/${task.id}`);
+    const result = await read<ChapterDraft>(
+      `${writing.root}/writer/${task.id}`,
+      previewReadTimeout,
+    );
     if (!disposed && seq === selection && current.value?.id === task.id)
       emit("chapterSuggestion", result);
   });
@@ -611,8 +642,9 @@ async function previewPlanning() {
   if (!task || !planning) return;
   const seq = selection;
   await perform(async () => {
-    const suggestion = await api<PlanningSuggestion>(
+    const suggestion = await read<PlanningSuggestion>(
       `${planning.root}/assist/${task.id}`,
+      previewReadTimeout,
     );
     if (!disposed && seq === selection && current.value?.id === task.id)
       emit("planningSuggestion", suggestion);
@@ -624,8 +656,9 @@ async function previewCharacters() {
   if (!task || !characters) return;
   const seq = selection;
   await perform(async () => {
-    const suggestion = await api<CharacterDesignSuggestion>(
+    const suggestion = await read<CharacterDesignSuggestion>(
       `${characters.root}/assist/${task.id}`,
+      previewReadTimeout,
     );
     if (!disposed && seq === selection && current.value?.id === task.id)
       emit("characterSuggestion", suggestion);
@@ -637,8 +670,9 @@ async function previewAssistance() {
   if (!task || !assistance) return;
   const seq = selection;
   await perform(async () => {
-    const suggestion = await api<unknown>(
+    const suggestion = await read<unknown>(
       `${assistance.root}/assist/${task.id}`,
+      previewReadTimeout,
     );
     if (!disposed && seq === selection && current.value?.id === task.id)
       emit("assistanceSuggestion", suggestion);
@@ -676,7 +710,7 @@ async function poll() {
 onMounted(async () => {
   window.addEventListener("beforeunload", unload);
   try {
-    const response = await api<{ items: Option[] }>(
+    const response = await read<{ items: Option[] }>(
       `/projects/${props.project.id}/generation-options`,
     );
     if (!disposed) {
@@ -692,6 +726,7 @@ onBeforeUnmount(() => {
   disposed = true;
   selection++;
   clearTimeout(timer);
+  for (const controller of pendingReads) controller.abort();
   window.removeEventListener("beforeunload", unload);
   emit("blocking", false);
 });
