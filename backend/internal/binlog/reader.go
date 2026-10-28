@@ -27,6 +27,10 @@ type Reader struct {
 
 var serverIdentity = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
+// ReadTimeout bounds one observed source range. Callers that synchronously
+// process transactions must give that work the same cancellation budget.
+const ReadTimeout = 2 * time.Minute
+
 func NewReader(dsn, serverUUID string) (*Reader, error) {
 	if !serverIdentity.MatchString(serverUUID) {
 		return nil, errors.New("verified source server identity required")
@@ -66,7 +70,7 @@ func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableS
 	if err != nil || order > 0 {
 		return errors.New("invalid source log range")
 	}
-	reading, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	reading, cancel := context.WithTimeout(ctx, ReadTimeout)
 	defer cancel()
 	// One physical socket covers authentication, verification and streaming.
 	// Cancellation interrupts handshake IO too; teardown never reconnects/KILLs.

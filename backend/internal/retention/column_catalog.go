@@ -111,35 +111,46 @@ func (p ColumnPolicy) Valid() bool {
 	return false
 }
 
+type ownerMetadata struct {
+	contract OwnerContract
+	columns  map[string]ColumnPolicy
+}
+
+// Built once from compiled contracts, never from source rows or persisted data.
+// The maps and their backing slices stay private and are read-only after init.
+var ownerMetadataByTable = func() map[string]ownerMetadata {
+	index := make(map[string]ownerMetadata, len(reviewedColumnContracts))
+	for _, spec := range reviewedColumnContracts {
+		spec.PrimaryKey = PrimaryKey(spec.Table)
+		columns := make(map[string]ColumnPolicy, len(spec.Columns))
+		for _, policy := range spec.Columns {
+			columns[policy.Column] = policy
+		}
+		index[spec.Table] = ownerMetadata{contract: spec, columns: columns}
+	}
+	return index
+}()
+
 // OwnerSpec returns a defensive copy of the reviewed schema31 source contract.
 // Scope resolution/typed shape validation and current access checks are still
 // required by the SQL scanner; table coverage alone never marks a scan complete.
 func OwnerSpec(table string) (OwnerContract, bool) {
-	for _, spec := range reviewedColumnContracts {
-		if spec.Table == table {
-			result := spec
-			result.Columns = slices.Clone(spec.Columns)
-			result.PrimaryKey = PrimaryKey(table)
-			return result, true
-		}
+	metadata, ok := ownerMetadataByTable[table]
+	if !ok {
+		return OwnerContract{}, false
 	}
-	return OwnerContract{}, false
+	result := metadata.contract
+	result.Columns = slices.Clone(result.Columns)
+	result.PrimaryKey = slices.Clone(result.PrimaryKey)
+	return result, true
 }
 func Column(table, column string) (ColumnPolicy, bool) {
-	spec, ok := OwnerSpec(table)
-	if !ok {
-		return ColumnPolicy{}, false
-	}
-	for _, policy := range spec.Columns {
-		if policy.Column == column {
-			return policy, true
-		}
-	}
-	return ColumnPolicy{}, false
+	policy, ok := ownerMetadataByTable[table].columns[column]
+	return policy, ok
 }
 func ValidateColumnCoverage(table string, columns []string) error {
-	spec, ok := OwnerSpec(table)
-	if !ok || len(columns) != len(spec.Columns) {
+	metadata, ok := ownerMetadataByTable[table]
+	if !ok || len(columns) != len(metadata.contract.Columns) {
 		return ErrInvalidInventory
 	}
 	seen := map[string]bool{}
@@ -147,7 +158,7 @@ func ValidateColumnCoverage(table string, columns []string) error {
 		if seen[column] {
 			return ErrInvalidInventory
 		}
-		if _, ok := Column(table, column); !ok {
+		if _, ok := metadata.columns[column]; !ok {
 			return ErrInvalidInventory
 		}
 		seen[column] = true

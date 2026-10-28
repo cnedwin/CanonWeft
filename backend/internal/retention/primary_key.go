@@ -1,9 +1,6 @@
 package retention
 
-import (
-	"strconv"
-	"strings"
-)
+import "strconv"
 
 type KeyKind string
 
@@ -27,17 +24,11 @@ func PrimaryKey(table string) []KeyColumn {
 	col := func(name string, kind KeyKind) KeyColumn {
 		return KeyColumn{Name: name, Kind: kind, FreeText: kind == KeyText}
 	}
-	for _, name := range strings.Fields(`workspaces users projects branches ip_revisions outbox resources artifact_releases model_connections model_calls platform_tasks context_packages source_imports model_prices generation_tasks skill_packages model_reconciliations change_plans index_jobs capability_versions skill_discovery_sources skill_discovery_runs skill_discovery_candidates tool_trials qualification_runs qualification_steps capability_qualifications capability_bindings qualification_schedules qualification_week_grants semantic_review_runs semantic_review_acceptances`) {
-		if table == name {
-			return []KeyColumn{col("id", KeyID)}
-		}
-	}
-	for _, name := range strings.Fields(`knowledge_indexes knowledge_chunks model_call_receipts working_indexes working_chunks`) {
-		if table == name {
-			return []KeyColumn{col("id", KeyHash)}
-		}
-	}
 	switch table {
+	case "workspaces", "users", "projects", "branches", "ip_revisions", "outbox", "resources", "artifact_releases", "model_connections", "model_calls", "platform_tasks", "context_packages", "source_imports", "model_prices", "generation_tasks", "skill_packages", "model_reconciliations", "change_plans", "index_jobs", "capability_versions", "skill_discovery_sources", "skill_discovery_runs", "skill_discovery_candidates", "tool_trials", "qualification_runs", "qualification_steps", "capability_qualifications", "capability_bindings", "qualification_schedules", "qualification_week_grants", "semantic_review_runs", "semantic_review_acceptances":
+		return []KeyColumn{col("id", KeyID)}
+	case "knowledge_indexes", "knowledge_chunks", "model_call_receipts", "working_indexes", "working_chunks":
+		return []KeyColumn{col("id", KeyHash)}
 	case "novel_setup_drafts", "novels":
 		return []KeyColumn{col("id", KeyID)}
 	case "novel_settings_versions":

@@ -84,6 +84,33 @@ func (r *LogReplay) Point() LogPoint { return r.point }
 // PrepareSegment is called only after a source Reader has validated the whole
 // observed range. It never advances the replay point or writes raw source rows.
 func (r *LogReplay) PrepareSegment(ctx context.Context, blobs storage.BlobStore, end binlog.Position, observed time.Time, transactions []binlog.Transaction) ([]byte, error) {
+	prepared, err := r.prepareSegment(ctx, blobs, end, observed, transactions)
+	if err != nil {
+		return nil, err
+	}
+	return prepared.raw, nil
+}
+
+// A prepared state is private to one capture. Its bytes and starting point
+// must still match after publish; it never bypasses row/object validation.
+type preparedLogSegment struct {
+	raw     []byte
+	hash    string
+	base    LogPoint
+	segment LogSegment
+	data    Data
+	objects map[string][]byte
+}
+
+func (p *preparedLogSegment) apply(r *LogReplay) error {
+	if p == nil || r == nil || r.Point() != p.base || digest(p.raw) != p.hash {
+		return errors.New("prepared log segment changed; reload required")
+	}
+	r.applyDecodedSegment(p.segment, p.data, p.objects, p.hash)
+	return nil
+}
+
+func (r *LogReplay) prepareSegment(ctx context.Context, blobs storage.BlobStore, end binlog.Position, observed time.Time, transactions []binlog.Transaction) (*preparedLogSegment, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -95,6 +122,9 @@ func (r *LogReplay) PrepareSegment(ctx context.Context, blobs storage.BlobStore,
 	var inputBytes int64
 	var inputRows int
 	for _, tx := range transactions {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		inputRows += len(tx.Changes)
 		if inputRows > 100000 {
 			return nil, errors.New("log segment row capacity exceeded")
@@ -111,18 +141,24 @@ func (r *LogReplay) PrepareSegment(ctx context.Context, blobs storage.BlobStore,
 		}
 	}
 	for _, tx := range transactions {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		clean, err := prepareLogTransaction(r.baseline.Tables, tx, r.baseline.Schema)
 		if err != nil {
 			return nil, err
 		}
 		segment.Transactions = append(segment.Transactions, clean)
 	}
-	_, refs, err := r.segmentRows(segment, nil)
+	_, refs, err := r.segmentRows(ctx, segment, nil)
 	if err != nil {
 		return nil, err
 	}
 	var total int64
 	for path := range refs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if _, exists := r.archive.Blobs[path]; exists {
 			continue
 		}
@@ -152,13 +188,21 @@ func (r *LogReplay) PrepareSegment(ctx context.Context, blobs storage.BlobStore,
 	}
 	// Objects are now known. Every complete intermediate point must fit the
 	// same export contract before these bytes can be durably published.
-	if _, _, _, err := r.decodeSegment(raw, digest(raw)); err != nil {
+	hash := digest(raw)
+	validated, data, objects, err := r.decodeSegmentContext(ctx, raw, hash)
+	if err != nil {
 		return nil, err
 	}
-	return raw, nil
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return &preparedLogSegment{raw: raw, hash: hash, base: r.Point(), segment: validated, data: data, objects: objects}, nil
 }
 
-func (r *LogReplay) segmentRows(segment LogSegment, check func(Data, time.Time) error) (Data, map[string]bool, error) {
+func (r *LogReplay) segmentRows(ctx context.Context, segment LogSegment, check func(Data, time.Time) error) (Data, map[string]bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	if segment.Format != 1 || segment.BaselineSHA256 != r.baseline.ArchiveSHA256 || segment.PreviousSHA256 != r.point.Hash || segment.Source != r.baseline.Source || segment.Schema != r.baseline.Schema || segment.From != r.point.Position || segment.ObservedAt.IsZero() || segment.ObservedAt.Before(r.point.ObservedAt) {
 		return nil, nil, errors.New("log segment provenance or chain mismatch")
 	}
@@ -185,7 +229,10 @@ func (r *LogReplay) segmentRows(segment LogSegment, check func(Data, time.Time) 
 	pointTime := r.point.ObservedAt
 	var totalRows int
 	var totalBytes int64
-	for _, tx := range segment.Transactions {
+	for index, tx := range segment.Transactions {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		totalRows += len(tx.Changes)
 		for _, change := range tx.Changes {
 			for _, row := range []binlog.Row{change.Before, change.After} {
@@ -200,9 +247,24 @@ func (r *LogReplay) segmentRows(segment LogSegment, check func(Data, time.Time) 
 		if order, err := binlog.ComparePositions(tx.End, segment.Through); err != nil || order > 0 {
 			return nil, nil, errors.New("log segment overruns observed boundary")
 		}
-		pointTime = r.recoveryTime(pointTime, tx.CommittedAt, segment.ObservedAt)
+		if order, err := binlog.ComparePositions(tx.Start, tx.End); tx.Start != cursor || err != nil || order >= 0 || tx.CommittedAt.IsZero() {
+			return nil, nil, errors.New("noncontiguous or invalid committed transaction")
+		}
+		nextTime := r.recoveryTime(pointTime, tx.CommittedAt, segment.ObservedAt)
+		// The first transaction always normalizes row order. Thereafter an
+		// actually empty transaction at the same recovery time has the exact
+		// same already-validated state and references. Reuse only within this
+		// replay; positions and cancellation are still checked for every commit.
+		if index > 0 && len(tx.Changes) == 0 && nextTime.Equal(pointTime) {
+			cursor = tx.End
+			continue
+		}
+		pointTime = nextTime
 		state, err = r.applyRows(state, cursor, tx.End, []binlog.Transaction{tx}, pointTime)
 		if err != nil {
+			return nil, nil, err
+		}
+		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
 		if err := r.checkLogDataCapacity(state); err != nil {
@@ -224,6 +286,9 @@ func (r *LogReplay) segmentRows(segment LogSegment, check func(Data, time.Time) 
 	}
 	// Metadata-only tail coverage is supplied by the actual source Reader;
 	// committed changes must still be contiguous and cannot overrun Through.
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	if check != nil {
 		if err := check(state, segment.ObservedAt); err != nil {
 			return nil, nil, err
@@ -233,14 +298,21 @@ func (r *LogReplay) segmentRows(segment LogSegment, check func(Data, time.Time) 
 }
 
 func (r *LogReplay) decodeSegment(raw []byte, expectedHash string) (LogSegment, Data, map[string][]byte, error) {
+	return r.decodeSegmentContext(context.Background(), raw, expectedHash)
+}
+
+func (r *LogReplay) decodeSegmentContext(ctx context.Context, raw []byte, expectedHash string) (LogSegment, Data, map[string][]byte, error) {
 	var segment LogSegment
+	if err := ctx.Err(); err != nil {
+		return segment, nil, nil, err
+	}
 	if len(raw) == 0 || int64(len(raw)) > maxDataBytes || !hex64.MatchString(expectedHash) || digest(raw) != expectedHash {
 		return segment, nil, nil, errors.New("log segment integrity failure")
 	}
 	if err := strictLogJSON(raw, &segment); err != nil {
 		return segment, nil, nil, errors.New("invalid log segment encoding")
 	}
-	_, refs, err := r.segmentRows(segment, nil)
+	_, refs, err := r.segmentRows(ctx, segment, nil)
 	if err != nil {
 		return segment, nil, nil, err
 	}
@@ -250,11 +322,17 @@ func (r *LogReplay) decodeSegment(raw []byte, expectedHash string) (LogSegment, 
 	objects := make(map[string][]byte, len(r.archive.Blobs)+len(segment.Objects))
 	var total int64
 	for path, body := range r.archive.Blobs {
+		if err := ctx.Err(); err != nil {
+			return segment, nil, nil, err
+		}
 		objects[path] = body
 		total += int64(len(body))
 	}
 	missing := 0
 	for path := range refs {
+		if err := ctx.Err(); err != nil {
+			return segment, nil, nil, err
+		}
 		if _, exists := objects[path]; exists {
 			continue
 		}
@@ -273,7 +351,16 @@ func (r *LogReplay) decodeSegment(raw []byte, expectedHash string) (LogSegment, 
 	if missing != len(segment.Objects) {
 		return segment, nil, nil, errors.New("unexpected or duplicated log recovery object")
 	}
-	data, _, err := r.segmentRows(segment, func(data Data, at time.Time) error { _, err := r.materializationFiles(data, objects, at); return err })
+	data, _, err := r.segmentRows(ctx, segment, func(data Data, at time.Time) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		_, err := r.materializationFiles(data, objects, at)
+		if err == nil {
+			err = ctx.Err()
+		}
+		return err
+	})
 	if err != nil {
 		return segment, nil, nil, err
 	}
@@ -281,10 +368,23 @@ func (r *LogReplay) decodeSegment(raw []byte, expectedHash string) (LogSegment, 
 }
 
 func (r *LogReplay) ApplySegment(raw []byte, expectedHash string) error {
-	segment, data, objects, err := r.decodeSegment(raw, expectedHash)
+	return r.ApplySegmentContext(context.Background(), raw, expectedHash)
+}
+
+// ApplySegmentContext leaves the replay unchanged if validation is cancelled.
+func (r *LogReplay) ApplySegmentContext(ctx context.Context, raw []byte, expectedHash string) error {
+	segment, data, objects, err := r.decodeSegmentContext(ctx, raw, expectedHash)
 	if err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	r.applyDecodedSegment(segment, data, objects, expectedHash)
+	return nil
+}
+
+func (r *LogReplay) applyDecodedSegment(segment LogSegment, data Data, objects map[string][]byte, expectedHash string) {
 	lastCommit := r.point.LastCommitAt
 	if len(segment.Transactions) > 0 {
 		lastCommit = segment.Transactions[len(segment.Transactions)-1].CommittedAt
@@ -293,7 +393,6 @@ func (r *LogReplay) ApplySegment(raw []byte, expectedHash string) error {
 	r.archive.Data = data
 	r.archive.Blobs = objects
 	r.point = LogPoint{Position: segment.Through, ObservedAt: segment.ObservedAt, LastCommitAt: lastCommit, Hash: expectedHash}
-	return nil
 }
 
 // ArchiveAt validates the entire segment first, then materializes exactly a
