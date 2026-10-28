@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api, APIError, message } from "../../api";
+import { useModelReads } from "./modelReads";
 import BudgetPanel from "./BudgetPanel.vue";
 import PricePanel from "./PricePanel.vue";
 import ReconciliationPanel from "./ReconciliationPanel.vue";
@@ -47,13 +48,17 @@ interface Settings {
   paid_enabled: boolean;
 }
 const emit = defineEmits<{ close: []; expired: [] }>();
-const settings = ref<Settings>({
-  catalog: [],
-  connections: [],
-  bindings: [],
-  roles: [],
-  paid_enabled: false,
-});
+function emptySettings(): Settings {
+  return {
+    catalog: [],
+    connections: [],
+    bindings: [],
+    roles: [],
+    paid_enabled: false,
+  };
+}
+const settings = ref<Settings>(emptySettings());
+const { read, active } = useModelReads();
 const form = ref<Connection | null>(null);
 const secret = ref("");
 const clearKey = ref(false);
@@ -81,21 +86,33 @@ const names: Record<string, string> = {
   import_reader: "导入理解",
 };
 async function perform(work: () => Promise<void>) {
-  if (busy.value) return;
+  if (busy.value || !active()) return;
   busy.value = true;
   error.value = "";
   notice.value = "";
   try {
     await work();
   } catch (e) {
-    error.value = message(e);
-    if (e instanceof APIError && e.status === 401) emit("expired");
+    if (active()) {
+      error.value = message(e);
+      if (e instanceof APIError && e.status === 401) emit("expired");
+    }
   } finally {
-    busy.value = false;
+    if (active()) busy.value = false;
   }
 }
 async function refresh() {
-  settings.value = await api<Settings>("/models");
+  try {
+    const value = await read<Settings>("/models");
+    if (active()) settings.value = value;
+  } catch (e) {
+    if (active() && e instanceof APIError && [401, 403].includes(e.status)) {
+      settings.value = emptySettings();
+      discard();
+      bindingConnection.value = "";
+    }
+    throw e;
+  }
 }
 function preset(p: Preset) {
   if (dirty.value || busy.value) return;
@@ -152,12 +169,13 @@ async function save() {
       id ? "PUT" : "POST",
       { ...fields, api_key: secret.value, clear_key: clearKey.value },
     );
+    if (!active()) return;
     secret.value = "";
     clearKey.value = false;
     dirty.value = false;
     form.value = saved;
     await refresh();
-    notice.value = "配置已保存；未发起模型调用。";
+    if (active()) notice.value = "配置已保存；未发起模型调用。";
   });
 }
 async function bind() {
@@ -170,8 +188,9 @@ async function bind() {
       connection_revision: c.revision,
       revision: previous?.revision ?? 0,
     });
+    if (!active()) return;
     await refresh();
-    notice.value = "用途绑定已保存；不影响已冻结的任务版本。";
+    if (active()) notice.value = "用途绑定已保存；不影响已冻结的任务版本。";
   });
 }
 function bindingName(b: Binding) {
@@ -179,6 +198,10 @@ function bindingName(b: Binding) {
   return `${c?.name ?? "配置已不存在"} · 版本 ${b.connection_revision}${!c?.enabled ? " · 已停用" : c.revision !== b.connection_revision ? " · 需要重新绑定新版" : ""}`;
 }
 onMounted(() => perform(refresh));
+onBeforeUnmount(() => {
+  secret.value = "";
+  form.value = null;
+});
 </script>
 
 <template>
@@ -198,6 +221,9 @@ onMounted(() => perform(refresh));
         返回项目
       </button>
     </section>
+    <button type="button" :disabled="busy" @click="perform(refresh)">
+      刷新模型配置
+    </button>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="notice" role="status" class="notice">{{ notice }}</p>
     <p v-if="dirty" class="notice">有未保存的配置。请保存或放弃修改后切换。</p>

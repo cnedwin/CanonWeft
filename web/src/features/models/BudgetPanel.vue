@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api, APIError, message } from "../../api";
+import { useModelReads } from "./modelReads";
+const { read, active } = useModelReads();
 interface Budget {
   currency_locked: boolean;
   currency: string;
@@ -40,17 +42,21 @@ function accept(b: Budget) {
   enabled.value = b.enabled;
 }
 async function perform(work: () => Promise<void>) {
-  if (busy.value) return;
+  if (busy.value || !active()) return;
   busy.value = true;
   error.value = "";
   notice.value = "";
   try {
     await work();
   } catch (e) {
-    error.value = message(e);
-    if (e instanceof APIError && e.status === 401) emit("expired");
+    if (active()) {
+      error.value = message(e);
+      if (e instanceof APIError && [401, 403].includes(e.status))
+        budget.value = null;
+      if (e instanceof APIError && e.status === 401) emit("expired");
+    }
   } finally {
-    busy.value = false;
+    if (active()) busy.value = false;
   }
 }
 async function save() {
@@ -62,18 +68,24 @@ async function save() {
       enabled: enabled.value,
       revision: budget.value?.revision ?? 0,
     });
+    if (!active()) return;
     accept(b);
     notice.value = b.enabled
       ? "费用门禁已开启；保存本身不发起调用。"
       : "预算已保存，付费调用保持关闭。";
   });
 }
-onMounted(() =>
-  perform(async () => accept(await api<Budget>("/model-budget"))),
-);
+async function reloadBudget() {
+  await perform(async () => {
+    const value = await read<Budget>("/model-budget");
+    if (active()) accept(value);
+  });
+}
+onMounted(reloadBudget);
 async function refreshTotals() {
   await perform(async () => {
-    budget.value = await api<Budget>("/model-budget");
+    const value = await read<Budget>("/model-budget");
+    if (active()) budget.value = value;
   });
 }
 defineExpose({ refreshTotals });
@@ -86,6 +98,13 @@ defineExpose({ refreshTotals });
     </p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="notice" role="status" class="notice">{{ notice }}</p>
+    <button
+      type="button"
+      :disabled="busy"
+      @click="budget ? refreshTotals() : reloadBudget()"
+    >
+      {{ budget ? "刷新费用统计" : "重新加载预算" }}
+    </button>
     <template v-if="budget"
       ><p>
         已记账 {{ display(budget.spent_micros) }} {{ budget.currency }} ·
