@@ -15,7 +15,7 @@
 
 - [产品设计](FINAL_PLAN.md)、[范围基线](reference/V1_1_BASELINE.md)。
 - [需求追踪](REQUIREMENTS_TRACE.md)：保留需求ID及交付归属。
-- [路线图](DELIVERY_ROADMAP.md)：公共底座、完整小说、漫剧、游戏与联合验收。
+- [产品路线图与分期实施](DELIVERY_ROADMAP.md)：五期产品目标、小说三个交付里程碑及完整工程工作包。
 - [实现状态](IMPLEMENTATION_STATUS.md)、[变更记录索引](progress.md)。
 
 ## 架构与开发
