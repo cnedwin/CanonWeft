@@ -21,6 +21,7 @@ import NovelWritingCard from "./NovelWritingCard.vue";
 import NovelReviewAnchor from "./NovelReviewAnchor.vue";
 import type { BookReviewEditTarget } from "./bookReviewTypes";
 import type { StoryLedgerEditTarget } from "./storyLedgerTypes";
+import type { ProseSearchEditTarget } from "./proseSearchTypes";
 import NovelBasisComparison from "./NovelBasisComparison.vue";
 import NovelChapterOldDraft, {
   type OldDraftTake,
@@ -45,6 +46,7 @@ const props = defineProps<{
   returnLabel?: string;
   reviewTarget?: BookReviewEditTarget | null;
   storyTarget?: StoryLedgerEditTarget | null;
+  searchTarget?: ProseSearchEditTarget | null;
 }>();
 const emit = defineEmits<{ close: []; expired: [] }>();
 const root = `/novels/${props.book.id}/chapters`;
@@ -83,8 +85,12 @@ const reviewAnchorVisible = ref(true);
 const activeStoryTarget = computed(() =>
   props.reviewTarget ? null : (props.storyTarget ?? null),
 );
+const activeSearchTarget = computed(() =>
+  props.reviewTarget || props.storyTarget ? null : (props.searchTarget ?? null),
+);
 const evidenceTarget = computed(
-  () => props.reviewTarget ?? activeStoryTarget.value,
+  () =>
+    props.reviewTarget ?? activeStoryTarget.value ?? activeSearchTarget.value,
 );
 async function locateReviewQuote(value: {
   start: number;
@@ -120,7 +126,9 @@ function addReviewInstruction(value: string) {
   }
   notice.value = activeStoryTarget.value
     ? "已补充账本证据到原地精修要求，尚未生成或修改正文、账本。"
-    : "已补充审稿问题到原地精修要求，尚未生成或修改正文。";
+    : activeSearchTarget.value
+      ? "已补充正文查找命中到原地精修要求，尚未生成或修改正文。"
+      : "已补充审稿问题到原地精修要求，尚未生成或修改正文。";
   refinementRegion.value?.scrollIntoView({
     behavior: "smooth",
     block: "center",
@@ -320,7 +328,11 @@ async function save(): Promise<void> {
     if (dirty.value) return save();
     return;
   }
-  if (!dirty.value && (draft.value.revision > 0 || props.storyTarget)) return;
+  if (
+    !dirty.value &&
+    (draft.value.revision > 0 || props.storyTarget || props.searchTarget)
+  )
+    return;
   clearTimeout(timer);
   const current = draft.value,
     content = text.value;
@@ -739,10 +751,12 @@ function unload(e: BeforeUnloadEvent) {
 onMounted(async () => {
   window.addEventListener("beforeunload", unload);
   await perform(async () => {
-    const target = activeStoryTarget.value;
+    const target = activeStoryTarget.value ?? activeSearchTarget.value;
     if (target && (!target.control_id || target.chapter_id !== props.chapterId))
       throw new Error(
-        "账本来源缺少已有章节资源，不能打开正文；请返回剧情账本重新读取。",
+        activeSearchTarget.value
+          ? "正文查找来源缺少已有章节资源，不能打开正文；请返回正文查找重新读取。"
+          : "账本来源缺少已有章节资源，不能打开正文；请返回剧情账本重新读取。",
       );
     const resource = target
       ? { id: target.control_id }
@@ -762,7 +776,9 @@ onMounted(async () => {
           value.document.chapter_id !== target.chapter_id)
       )
         throw new Error(
-          "账本来源与当前章节资源不一致，请返回剧情账本重新读取。",
+          activeSearchTarget.value
+            ? "正文查找来源与当前章节资源不一致，请返回正文查找重新读取。"
+            : "账本来源与当前章节资源不一致，请返回剧情账本重新读取。",
         );
       install(value);
       branch.value = currentBranch;
@@ -880,7 +896,13 @@ onBeforeUnmount(() => {
           evidenceTarget.chapter_id === draft.document.chapter_id
         "
         :target="evidenceTarget"
-        :label="activeStoryTarget ? '账本证据' : undefined"
+        :label="
+          activeStoryTarget
+            ? '账本证据'
+            : activeSearchTarget
+              ? '正文查找'
+              : undefined
+        "
         :text="draft.document.text"
         :hash="draft.hash"
         :saved="!dirty && !saving"

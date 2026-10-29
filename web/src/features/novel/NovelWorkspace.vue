@@ -19,6 +19,12 @@ import NovelImages from "./NovelImages.vue";
 import NovelResearchDesk from "./NovelResearchDesk.vue";
 import NovelSourceReview from "./NovelSourceReview.vue";
 import NovelStoryLedger from "./NovelStoryLedger.vue";
+import NovelProseSearch from "./NovelProseSearch.vue";
+import {
+  initialProseSearchView,
+  type ProseSearchView,
+} from "./proseSearchReads";
+import type { ProseSearchEditTarget } from "./proseSearchTypes";
 import {
   initialStoryLedgerView,
   type StoryLedgerView,
@@ -55,6 +61,10 @@ const storyLedger = ref(false);
 const storyLedgerView = ref<StoryLedgerView>(initialStoryLedgerView());
 const storyLedgerTarget = ref<StoryLedgerEditTarget | null>(null);
 const returnToStoryLedger = ref(false);
+const proseSearch = ref(false);
+const proseSearchView = ref<ProseSearchView>(initialProseSearchView());
+const proseSearchTarget = ref<ProseSearchEditTarget | null>(null);
+const returnToProseSearch = ref(false);
 const planningResourceId = ref("");
 const returnToReview = ref(false);
 const reviewFilters = ref({ query: "", kind: "all" });
@@ -89,6 +99,7 @@ const onHome = computed(
   () =>
     !sourceReview.value &&
     !storyLedger.value &&
+    !proseSearch.value &&
     !research.value &&
     !images.value &&
     !chapterId.value &&
@@ -177,6 +188,7 @@ function closeChapter() {
   initialChapterAction.value = undefined;
   reviewing.value = returnToBookReview.value;
   storyLedger.value = returnToStoryLedger.value;
+  proseSearch.value = returnToProseSearch.value;
   exporting.value = false;
   batch.value = false;
   // The chapter's close action promises to return to its planning context.
@@ -184,7 +196,10 @@ function closeChapter() {
   planning.value =
     !returnToReview.value &&
     !returnToBookReview.value &&
-    !returnToStoryLedger.value;
+    !returnToStoryLedger.value &&
+    !returnToProseSearch.value;
+  returnToProseSearch.value = false;
+  proseSearchTarget.value = null;
   returnToStoryLedger.value = false;
   storyLedgerTarget.value = null;
   returnToBookReview.value = false;
@@ -213,6 +228,17 @@ function openStoryLedgerEntry(target: StoryLedgerEditTarget) {
   returnToBookReview.value = false;
   returnToStoryLedger.value = true;
   storyLedger.value = false;
+  openCatalogChapter(target.chapter_id);
+}
+function openProseSearchMatch(target: ProseSearchEditTarget) {
+  proseSearchTarget.value = target;
+  bookReviewTarget.value = null;
+  storyLedgerTarget.value = null;
+  returnToReview.value = false;
+  returnToBookReview.value = false;
+  returnToStoryLedger.value = false;
+  returnToProseSearch.value = true;
+  proseSearch.value = false;
   openCatalogChapter(target.chapter_id);
 }
 function openReviewChapter(id: string) {
@@ -252,8 +278,17 @@ onBeforeUnmount(() => {
       :disabled="!canEdit || (!onHome && !chapterId)"
       @intent="routeIntent"
     />
+    <NovelProseSearch
+      v-if="proseSearch"
+      :book-id="book.id"
+      :initial-view="proseSearchView"
+      @view="proseSearchView = $event"
+      @edit="openProseSearchMatch"
+      @expired="emit('expired')"
+      @close="proseSearch = false"
+    />
     <NovelStoryLedger
-      v-if="storyLedger"
+      v-else-if="storyLedger"
       :book-id="book.id"
       :initial-view="storyLedgerView"
       @view="storyLedgerView = $event"
@@ -315,14 +350,17 @@ onBeforeUnmount(() => {
       :initial-action="initialChapterAction"
       :review-target="bookReviewTarget"
       :story-target="storyLedgerTarget"
+      :search-target="proseSearchTarget"
       :return-label="
-        returnToStoryLedger
-          ? '保存并返回剧情账本'
-          : returnToBookReview
-            ? '保存并返回审稿报告'
-            : returnToReview
-              ? '保存并返回待复核清单'
-              : undefined
+        returnToProseSearch
+          ? '保存并返回正文查找'
+          : returnToStoryLedger
+            ? '保存并返回剧情账本'
+            : returnToBookReview
+              ? '保存并返回审稿报告'
+              : returnToReview
+                ? '保存并返回待复核清单'
+                : undefined
       "
       ref="chapterEditor"
       @close="closeChapter"
@@ -540,6 +578,9 @@ onBeforeUnmount(() => {
           <div class="workspace-actions">
             <button v-if="canEdit" @click="storyLedger = true">
               全书剧情账本
+            </button>
+            <button :disabled="!canEdit" @click="proseSearch = true">
+              全书正文查找
             </button>
             <button v-if="canEdit" @click="reviewing = true">
               整卷与全书审稿
