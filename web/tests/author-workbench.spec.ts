@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 const initialText = "门外。林舟停了下来。门后有人。";
-async function fixture(page: Page, editor = false) {
+async function fixture(page: Page, editor = false, navigation = false) {
   let draft = {
     resource: { id: "body", name: "第一章", revision: 1, head: "" },
     revision: 1,
@@ -24,6 +24,23 @@ async function fixture(page: Page, editor = false) {
     },
   };
   let candidateText = "门外。林舟缓缓停步。门后有人。";
+  const chapterDrafts = new Map([
+    ["chapter", structuredClone(draft)],
+    [
+      "unready",
+      {
+        ...structuredClone(draft),
+        resource: { ...draft.resource, id: "body-2", name: "第二章" },
+        document: {
+          ...structuredClone(draft.document),
+          chapter_id: "unready",
+          body_id: "body-2",
+          title: "第二章",
+          text: "第二章独立保存的正文。",
+        },
+      },
+    ],
+  ]);
   let release: (() => void) | undefined;
   let held: Promise<void> | undefined;
   const writes: string[] = [];
@@ -62,8 +79,8 @@ async function fixture(page: Page, editor = false) {
             {
               id: "unready",
               title: "未确认章",
-              ready: false,
-              reason: "请确认细纲",
+              ready: navigation,
+              reason: navigation ? "" : "请确认细纲",
             },
           ],
         },
@@ -96,8 +113,13 @@ async function fixture(page: Page, editor = false) {
         },
       });
     }
-    if (path === "/api/novels/book/chapters")
+    if (path === "/api/novels/book/chapters") {
+      if (navigation)
+        draft = structuredClone(
+          chapterDrafts.get(req.postDataJSON().chapter_id)!,
+        );
       return route.fulfill({ json: draft.resource });
+    }
     if (path.endsWith("/writing-card"))
       return route.fulfill({
         json: {
@@ -259,6 +281,47 @@ test("当前阶段来自有效规划；助手写章必须明确选择；所有�
     initialText,
   );
 });
+test("工作台章节跳转切换真实编辑器并保留每章原稿，窄屏可使用", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, false, true);
+  await page.getByRole("button", { name: "写一章", exact: true }).click();
+  await page
+    .getByRole("button", { name: "写作 · 第一章", exact: true })
+    .click();
+  const field = page.getByLabel("章节正文", { exact: true });
+  await expect(field).toHaveValue(initialText);
+  const panel = page.getByRole("region", { name: "章节跳转", exact: true });
+  await panel.getByRole("button", { name: "下一章", exact: true }).click();
+  await expect(field).toHaveValue("第二章独立保存的正文。");
+  await expect(panel).toContainText("第 2 / 2 章");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("chapter-navigation-mobile.png"),
+    fullPage: true,
+  });
+  await panel.getByRole("button", { name: "上一章", exact: true }).click();
+  await expect(field).toHaveValue(initialText);
+  expect(state.writes).toEqual([]);
+  expect(
+    state.requests.filter(
+      (request) =>
+        request.path === "/api/novels/book/chapters" &&
+        request.method === "POST",
+    ),
+  ).toHaveLength(3);
+  expect(
+    state.requests.some((request) =>
+      /\/start$|\/generate|\/agents$/.test(request.path),
+    ),
+  ).toBe(false);
+});
+
 test("选区精修使用原预算任务；越界候选不能采用且不改正文", async ({ page }) => {
   const state = await fixture(page, true);
   state.candidate("门外。林舟缓缓停步。连门后也改写了。");

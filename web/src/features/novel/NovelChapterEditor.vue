@@ -19,6 +19,7 @@ import NovelChapterResearch from "./NovelChapterResearch.vue";
 import NovelInlineRefinement from "./NovelInlineRefinement.vue";
 import NovelWritingCard from "./NovelWritingCard.vue";
 import NovelChapterTextTools from "./NovelChapterTextTools.vue";
+import NovelChapterNavigation from "./NovelChapterNavigation.vue";
 import {
   chapterTextareaSelection,
   chapterSourceSelection,
@@ -62,8 +63,9 @@ const props = defineProps<{
   storyTarget?: StoryLedgerEditTarget | null;
   searchTarget?: ProseSearchEditTarget | null;
   resourceTarget?: Extract<NovelResourceTarget, { kind: "chapter" }> | null;
+  allowChapterNavigation?: boolean;
 }>();
-const emit = defineEmits<{ close: []; expired: [] }>();
+const emit = defineEmits<{ close: []; expired: []; navigate: [id: string] }>();
 const root = `/novels/${props.book.id}/chapters`;
 const basisReads = useBoundedReads({
   stopped: "依据对照读取已停止。",
@@ -93,6 +95,9 @@ const selectedScope = ref<RefinementScope | null>(null);
 const selectedQuote = computed(() => selectedScope.value?.quote ?? "");
 const refinementRegion = ref<HTMLElement | null>(null);
 const refinementEditor = ref<InstanceType<typeof NovelInlineRefinement> | null>(
+  null,
+);
+const editorialEditor = ref<InstanceType<typeof NovelEditorialDesk> | null>(
   null,
 );
 const manuscriptField = ref<HTMLTextAreaElement | null>(null);
@@ -267,6 +272,39 @@ const canEdit = computed(
     ["owner", "editor"].includes(props.project.role),
 );
 const locked = computed(() => busy.value || ledgerOpen.value || !canEdit.value);
+const chapterNavigationAllowed = computed(
+  () =>
+    !!props.allowChapterNavigation &&
+    !props.reviewTarget &&
+    !props.storyTarget &&
+    !props.searchTarget &&
+    !props.resourceTarget,
+);
+const chapterNavigationBlocked = computed(
+  () =>
+    locked.value ||
+    !draft.value ||
+    dirty.value ||
+    saving.value ||
+    !!unconfirmedSave.value ||
+    assistant.value ||
+    assistantBlocking.value ||
+    basisLoading.value ||
+    oldDraftOpen.value ||
+    basisVisible.value ||
+    !!refinementEditor.value?.hasInput() ||
+    !!editorialEditor.value?.hasInput(),
+);
+function navigateChapter(id: string) {
+  if (
+    disposed ||
+    !chapterNavigationAllowed.value ||
+    chapterNavigationBlocked.value ||
+    id === props.chapterId
+  )
+    return;
+  emit("navigate", id);
+}
 watch([assistant, ledgerOpen], () => {
   if (assistant.value || ledgerOpen.value) focusMode.value = false;
 });
@@ -1007,6 +1045,14 @@ onBeforeUnmount(() => {
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
     <template v-if="draft">
+      <NovelChapterNavigation
+        v-if="chapterNavigationAllowed"
+        :book-id="book.id"
+        :chapter-id="chapterId"
+        :blocked="chapterNavigationBlocked"
+        @navigate="navigateChapter"
+        @expired="emit('expired')"
+      />
       <p role="status">
         {{
           unconfirmedSave
@@ -1259,6 +1305,7 @@ onBeforeUnmount(() => {
         @expired="emit('expired')"
       />
       <NovelEditorialDesk
+        ref="editorialEditor"
         v-if="!assistant && !ledgerOpen"
         v-show="!focusMode"
         :text="draft.document.text"

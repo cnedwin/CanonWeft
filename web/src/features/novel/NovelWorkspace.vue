@@ -164,6 +164,22 @@ const canEdit = computed(
     ["owner", "editor"].includes(props.actor.role) &&
     ["owner", "editor"].includes(props.project.role),
 );
+const ordinaryChapterNavigation = computed(
+  () =>
+    !changeSession.value &&
+    !returnToReview.value &&
+    !returnToBookReview.value &&
+    !returnToStoryLedger.value &&
+    !returnToProseSearch.value &&
+    !bookReviewTarget.value &&
+    !storyLedgerTarget.value &&
+    !proseSearchTarget.value &&
+    !resourceTarget.value,
+);
+function navigateChapter(id: string) {
+  if (chapterId.value && ordinaryChapterNavigation.value)
+    openCatalogChapter(id);
+}
 function updated(value: NovelBook) {
   book.value = value;
   settings.value = false;
@@ -565,6 +581,7 @@ onBeforeUnmount(() => {
       :project="project"
       :actor="actor"
       :chapter-id="chapterId"
+      :allow-chapter-navigation="ordinaryChapterNavigation"
       :initial-action="initialChapterAction"
       :review-target="bookReviewTarget"
       :story-target="storyLedgerTarget"
@@ -585,6 +602,7 @@ onBeforeUnmount(() => {
       "
       ref="chapterEditor"
       @close="closeChapter"
+      @navigate="navigateChapter"
       @expired="emit('expired')"
     />
     <NovelCharacterDesigner
