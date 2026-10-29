@@ -13,6 +13,15 @@ func registerNovelChapters(g *echo.Group, workspace *service.Workspace, actor fu
 	ip := &service.IP{Workspace: workspace, Blobs: storage.LocalBlobs{Root: os.Getenv("STUDIO_BLOB_ROOT")}}
 	registerNovelExport(g, ip, actor)
 	svc := &service.NovelChapters{IP: ip}
+	g.GET("/novels/:novel/story-ledger", func(c *echo.Context) error {
+		v, e := svc.StoryLedger(c.Request().Context(), actor(c).ID, c.Param("novel"), c.QueryParam("source"), c.QueryParam("after"))
+		if e != nil {
+			return novelEntryError(c, e)
+		}
+		c.Response().Header().Set("Cache-Control", "private, no-store")
+		c.Response().Header().Set("X-Content-Type-Options", "nosniff")
+		return c.JSON(200, v)
+	})
 	embedder, _ := retrieval.NewEmbedder(os.Getenv("STUDIO_EMBEDDING_URL"), os.Getenv("STUDIO_EMBEDDING_TOKEN"))
 	writer := &service.NovelChapterWriter{Generations: &service.Generations{IP: ip}, Knowledge: &service.Knowledge{IP: ip, Embedder: embedder}}
 	registerNovelBookReviews(g, writer, actor)

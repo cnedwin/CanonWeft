@@ -15,6 +15,7 @@ import (
 type NovelLedgerDraft struct {
 	Resource domain.Resource     `json:"resource"`
 	Revision int64               `json:"revision"`
+	Hash     string              `json:"hash"`
 	BaseHead string              `json:"base_head"`
 	Document novel.ChapterLedger `json:"document"`
 	Ready    bool                `json:"ready"`
@@ -76,6 +77,7 @@ func (s *NovelChapters) ledgerTx(ctx context.Context, tx *sql.Tx, a domain.Actor
 	}
 	out.Revision, out.BaseHead = stored.Revision, stored.BaseHead
 	if stored.Revision > 0 {
+		out.Hash = digest(stored.Text)
 		decoder := json.NewDecoder(bytes.NewBufferString(stored.Text))
 		decoder.DisallowUnknownFields()
 		if decoder.Decode(&out.Document) != nil || decoder.Decode(&struct{}{}) != io.EOF {
@@ -83,14 +85,15 @@ func (s *NovelChapters) ledgerTx(ctx context.Context, tx *sql.Tx, a domain.Actor
 		}
 	} else if out.Resource.Head != "" {
 		raw, e := s.IP.Blobs.ReadObject(ctx, book.ProjectID, out.Resource.Hash)
-		if e != nil {
-			return out, e
+		if e != nil || digest(string(raw)) != out.Resource.Hash {
+			return out, domain.ErrNotReady
 		}
 		var published chapterReleaseLedger
 		if json.Unmarshal(raw, &published) != nil || published.Schema != 1 {
 			return out, domain.ErrNotReady
 		}
 		out.Document, out.BaseHead = published.Ledger, out.Resource.Head
+		out.Hash = out.Resource.Hash
 	} else {
 		out.BaseHead = out.Resource.Head
 		out.Document = novel.ChapterLedger{Schema: 1, Source: chapterSource(book.ID, d), ChapterID: d.Document.ChapterID, BodyID: d.Document.BodyID, TextHash: digest(d.Document.Text), LedgerOutput: novel.LedgerOutput{Summary: "尚未提取剧情变化", Entries: []novel.LedgerEntry{}, Notes: []string{}}}
@@ -185,6 +188,7 @@ func (s *NovelChapters) SaveLedger(ctx context.Context, actor, bookID, chapter s
 		return in, err
 	}
 	in.Resource, in.Revision, in.Ready, in.Reason = old.Resource, saved.Revision, true, ""
+	in.Hash = digest(string(raw))
 	return in, nil
 }
 

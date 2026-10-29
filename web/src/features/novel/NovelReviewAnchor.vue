@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
-import type { BookReviewEditTarget } from "./bookReviewTypes";
+import type { ChapterEvidenceTarget } from "./chapterEvidence";
 import { reviewQuotePositions, type QuotePosition } from "./reviewAnchor";
 const props = defineProps<{
-  target: BookReviewEditTarget;
+  target: ChapterEvidenceTarget;
+  label?: string;
   text: string;
   hash: string;
   saved: boolean;
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 const matches = computed(() =>
   reviewQuotePositions(props.text, props.target.quote),
 );
+const ledgerEvidence = computed(() => props.label === "账本证据");
 function locate(position: QuotePosition) {
   if (!props.disabled)
     emit("locate", {
@@ -26,7 +28,9 @@ function locate(position: QuotePosition) {
     });
 }
 function refine() {
-  const text = `处理整卷/全书审稿问题：${props.target.title}\n审稿依据与解释：${props.target.explanation}\n修改建议：${props.target.suggestion}\n原报告引用：${props.target.quote}\n请核对当前稿再修改，不把旧报告视为当前事实；保留选定范围之外的正文。`;
+  const text = ledgerEvidence.value
+    ? `核对账本证据：${props.target.title}\n记录依据与解释：${props.target.explanation}\n修改建议：${props.target.suggestion}\n账本原引用：${props.target.quote}\n请先核对当前稿与账本来源，不把旧记录的解释视为当前事实；保留选定范围之外的正文。账本须另行人工核对，本次要求不会自动修改账本。`
+    : `处理整卷/全书审稿问题：${props.target.title}\n审稿依据与解释：${props.target.explanation}\n修改建议：${props.target.suggestion}\n原报告引用：${props.target.quote}\n请核对当前稿再修改，不把旧报告视为当前事实；保留选定范围之外的正文。`;
   emit("refine", Array.from(text).slice(0, 3900).join(""));
 }
 let attempted = false;
@@ -41,26 +45,55 @@ watch(
 );
 </script>
 <template>
-  <section class="panel review-anchor" aria-label="本次审稿修改任务">
+  <section
+    class="panel review-anchor"
+    :aria-label="label || '本次审稿修改任务'"
+  >
     <header>
       <h2>{{ target.title }}</h2>
-      <button :disabled="disabled" @click="emit('close')">收起问题提示</button>
+      <button :disabled="disabled" @click="emit('close')">
+        {{ ledgerEvidence ? "收起证据提示" : "收起问题提示" }}
+      </button>
     </header>
     <p>{{ target.explanation }}</p>
     <p>建议：{{ target.suggestion }}</p>
-    <blockquote aria-label="审稿原引用">{{ target.quote }}</blockquote>
+    <blockquote :aria-label="ledgerEvidence ? '账本原引用' : '审稿原引用'">
+      {{ target.quote }}
+    </blockquote>
     <p v-if="!saved" role="status">
-      当前有未保存的修改。定位使用当前编辑文字；处置与复核须保存后返回报告核对。
+      {{
+        ledgerEvidence
+          ? "当前有未保存的修改。定位使用当前编辑文字；请保存后返回剧情账本核对来源与记录。"
+          : "当前有未保存的修改。定位使用当前编辑文字；处置与复核须保存后返回报告核对。"
+      }}
     </p>
     <p v-else-if="!target.reviewed_hash" role="status">
-      原报告缺少可比的章稿版本，不能确认当前稿与审稿稿本相同。
+      {{
+        ledgerEvidence
+          ? "账本记录缺少可比的章稿版本，不能确认当前稿与账本来源相同。"
+          : "原报告缺少可比的章稿版本，不能确认当前稿与审稿稿本相同。"
+      }}
     </p>
     <p v-else-if="hash !== target.reviewed_hash" role="status">
-      当前已保存稿与原审稿版本不同；引文仍出现也不代表原问题已解决。
+      {{
+        ledgerEvidence
+          ? "当前已保存稿与账本来源版本不同；引文仍出现也不代表原记录仍然准确。"
+          : "当前已保存稿与原审稿版本不同；引文仍出现也不代表原问题已解决。"
+      }}
     </p>
-    <p v-else>当前已保存稿与原审稿章节版本一致；修改后仍需返回报告核对。</p>
+    <p v-else>
+      {{
+        ledgerEvidence
+          ? "当前已保存稿与账本来源章节版本一致；记录的解释仍需人工核对。"
+          : "当前已保存稿与原审稿章节版本一致；修改后仍需返回报告核对。"
+      }}
+    </p>
     <p v-if="!matches.total" role="status">
-      当前稿未找到这段原引用，请结合建议手动核对。引用消失不能作为问题已经解决的依据。
+      {{
+        ledgerEvidence
+          ? "当前稿未找到这段账本原引用，请结合记录手动核对。引用消失不能作为记录已经修正的依据。"
+          : "当前稿未找到这段原引用，请结合建议手动核对。引用消失不能作为问题已经解决的依据。"
+      }}
     </p>
     <template v-else-if="matches.total === 1"
       ><p>当前文字有一处精确匹配。</p>
@@ -87,7 +120,11 @@ watch(
     >
     <button :disabled="disabled" @click="refine">带入原地精修要求</button>
     <p>
-      此操作只补充精修要求，不开始生成。保存后返回同一审稿报告记录处理和人工复核；原报告始终保留。
+      {{
+        ledgerEvidence
+          ? "此操作只补充精修要求，不开始生成。正文与账本仍需分别保存、核对和独立审查；不会自动修改账本。"
+          : "此操作只补充精修要求，不开始生成。保存后返回同一审稿报告记录处理和人工复核；原报告始终保留。"
+      }}
     </p>
   </section>
 </template>
