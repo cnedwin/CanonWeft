@@ -58,7 +58,13 @@ func NewReader(dsn, serverUUID string) (*Reader, error) {
 	return &Reader{serverUUID: serverUUID, address: config.Addr, user: config.User, password: config.Passwd, serverID: serverID}, nil
 }
 
-func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableSchema, start, end Position, visit func(Transaction) error) error {
+func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableSchema, start, end Position, visit func(Transaction) error) (resultErr error) {
+	code, stage, point, kind := "READ_CONTRACT_REJECTED", "validate", start, uint8(0)
+	defer func() {
+		if resultErr != nil {
+			resultErr = readFailure(code, stage, point, kind, resultErr)
+		}
+	}()
 	if r == nil || visit == nil {
 		return errors.New("log reader and transaction consumer required")
 	}
@@ -85,6 +91,7 @@ func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableS
 		}
 	}()
 	dialer := &net.Dialer{}
+	code, stage = "SOURCE_CONNECTION_FAILED", "connect"
 	connection, err := client.ConnectWithDialer(reading, "tcp", r.address, r.user, r.password, "", func(ctx context.Context, network, address string) (net.Conn, error) {
 		conn, dialErr := dialer.DialContext(ctx, network, address)
 		if dialErr != nil {
@@ -100,12 +107,14 @@ func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableS
 	if err != nil {
 		return safeReadFailure(reading)
 	}
+	code, stage = "SOURCE_CONTRACT_REJECTED", "preflight"
 	if err = r.preflight(reading, connection); err != nil {
 		return err
 	}
 	if order == 0 {
 		return observeEmpty(reading, connection, start)
 	}
+	code, stage = "STREAM_SETUP_FAILED", "stream_setup"
 	result, err := connection.Execute("SET @master_binlog_checksum='NONE', @source_binlog_checksum='NONE'")
 	if err != nil {
 		return safeReadFailure(reading)
@@ -130,6 +139,7 @@ func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableS
 	parser.SetRenderJSONAsMySQLText(true)
 	formatSeen := false
 	for {
+		code, stage, point, kind = "SOURCE_PACKET_UNAVAILABLE", "read_packet", decoder.position, 0
 		if reading.Err() != nil {
 			return reading.Err()
 		}
@@ -137,24 +147,31 @@ func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableS
 		if readErr != nil || len(packet) == 0 || packet[0] != gomysql.OK_HEADER {
 			return safeReadFailure(reading)
 		}
+		code, stage = "PARSE_EVENT_REJECTED", "parse"
+		if len(packet) > 5 {
+			kind = packet[5]
+		}
 		event, parseErr := parseSourceEvent(parser, packet[1:], &formatSeen)
 		if parseErr != nil {
 			return parseErr
 		}
+		code, stage = "DECODE_EVENT_REJECTED", "decode"
 		transaction, decodeErr := decoder.Consume(event)
 		if decodeErr != nil {
 			return decodeErr
 		}
+		code, stage = "RECOVERY_BOUNDARY_REJECTED", "boundary"
 		order, err = comparePositions(decoder.position, end)
 		if err != nil || order > 0 {
 			return errors.New("requested recovery boundary is not a source event boundary")
 		}
 		if transaction != nil {
+			code, stage = "TRANSACTION_REJECTED", "consume"
 			if reading.Err() != nil {
 				return reading.Err()
 			}
 			if err = visit(*transaction); err != nil {
-				return errors.New("transaction consumer rejected source changes")
+				return err
 			}
 		}
 		if order == 0 {

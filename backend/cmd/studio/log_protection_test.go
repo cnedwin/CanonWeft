@@ -1,6 +1,18 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"novelstudio/internal/backup"
+	"strings"
+	"testing"
+)
+
+func TestLogProtectionNotificationNeverFormatsRawFailure(t *testing.T) {
+	out := logProtectionFailure(backup.LogRecoveryView{State: "CAPTURE_FAILED"}, errors.New("raw SQL private manuscript API-key"))
+	if strings.Contains(out, "raw SQL") || strings.Contains(out, "private") || strings.Contains(out, "API-key") || !strings.Contains(out, "CAPTURE_UNCLASSIFIED") {
+		t.Fatal("unsafe failure notification")
+	}
+}
 
 func TestLogProtectionConnectionIsLocalReadAccountAndExactDatabase(t *testing.T) {
 	for _, raw := range []string{

@@ -12,16 +12,17 @@ import (
 )
 
 type LogRecoveryView struct {
-	State            string    `json:"state"`
-	CheckedAt        time.Time `json:"checked_at"`
-	CoverageFrom     time.Time `json:"coverage_from"`
-	Latest           LogPoint  `json:"latest"`
-	BaselineID       string    `json:"baseline_id"`
-	Running          bool      `json:"running"`
-	HistoryGaps      int       `json:"history_gaps"`
-	CleanupState     string    `json:"cleanup_state"`
-	RetentionDays    int       `json:"retention_days"`
-	IndependentMedia string    `json:"independent_media"`
+	Failure          *binlog.ReadFailureDetails `json:"failure,omitempty"`
+	State            string                     `json:"state"`
+	CheckedAt        time.Time                  `json:"checked_at"`
+	CoverageFrom     time.Time                  `json:"coverage_from"`
+	Latest           LogPoint                   `json:"latest"`
+	BaselineID       string                     `json:"baseline_id"`
+	Running          bool                       `json:"running"`
+	HistoryGaps      int                        `json:"history_gaps"`
+	CleanupState     string                     `json:"cleanup_state"`
+	RetentionDays    int                        `json:"retention_days"`
+	IndependentMedia string                     `json:"independent_media"`
 }
 
 type LogRunner struct {
@@ -110,7 +111,11 @@ func (r *LogRunner) tick(ctx context.Context, now time.Time, force bool) (result
 	r.stateMu.Unlock()
 	result.CheckedAt = now.UTC()
 	result.State = "ERROR"
+	result.Failure = nil
 	defer func() {
+		if details, ok := binlog.ReadFailureInfo(resultErr); ok {
+			result.Failure = &details
+		}
 		result.Running = false
 		result.BaselineID = r.active.ID
 		result.CoverageFrom = r.active.ObservedAt
