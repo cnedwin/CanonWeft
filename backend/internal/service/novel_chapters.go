@@ -294,7 +294,10 @@ func (s *NovelChapters) Save(ctx context.Context, actor, bookID, id string, in N
 	return in, nil
 }
 
-func (s *NovelChapters) Basis(ctx context.Context, actor, bookID, id string, revision int64) (NovelChapterDraft, error) {
+func (s *NovelChapters) Basis(ctx context.Context, actor, bookID, id string, revision int64, reviewedHash ...string) (NovelChapterDraft, error) {
+	if len(reviewedHash) > 1 {
+		return NovelChapterDraft{}, domain.ErrValidation
+	}
 	tx, a, book, err := (&NovelPlanning{IP: s.IP}).begin(ctx, actor, bookID, true)
 	if err != nil {
 		return NovelChapterDraft{}, err
@@ -306,6 +309,15 @@ func (s *NovelChapters) Basis(ctx context.Context, actor, bookID, id string, rev
 	}
 	if d.Revision != revision {
 		return d, domain.ErrConflict
+	}
+	if len(reviewedHash) == 1 && reviewedHash[0] != "" {
+		preview, err := s.basisPreviewTx(ctx, tx, book, d)
+		if err != nil {
+			return d, err
+		}
+		if !preview.CanRefresh || preview.BasisHash != reviewedHash[0] {
+			return d, fmt.Errorf("%w：章稿或规划依据已变化，请重新查看依据对照", domain.ErrConflict)
+		}
 	}
 	check, err := newPlanningCheck(ctx, tx, s.IP, book.ProjectID, book.BranchID)
 	if err != nil {

@@ -41,6 +41,9 @@ const designingCharacters = ref(false);
 const images = ref(false);
 const research = ref(false);
 const sourceReview = ref(false);
+const planningResourceId = ref("");
+const returnToReview = ref(false);
+const reviewFilters = ref({ query: "", kind: "all" });
 const researchId = ref("");
 const book = ref(props.book);
 const overview = ref<PlanningOverview | null>(null);
@@ -148,8 +151,32 @@ function closeChapter() {
   exporting.value = false;
   batch.value = false;
   // The chapter's close action promises to return to its planning context.
-  planning.value = true;
+  planningResourceId.value = "";
+  planning.value = !returnToReview.value;
+  if (returnToReview.value) {
+    sourceReview.value = true;
+    returnToReview.value = false;
+  }
   void loadStage();
+}
+function openReviewPlanning(id: string) {
+  planningResourceId.value = id;
+  returnToReview.value = true;
+  sourceReview.value = false;
+  planning.value = true;
+}
+function openReviewChapter(id: string) {
+  returnToReview.value = true;
+  sourceReview.value = false;
+  openCatalogChapter(id);
+}
+function closePlanning() {
+  planning.value = false;
+  planningResourceId.value = "";
+  if (returnToReview.value) {
+    sourceReview.value = true;
+    returnToReview.value = false;
+  }
 }
 function openCatalogChapter(id: string) {
   initialChapterAction.value = undefined;
@@ -179,20 +206,16 @@ onBeforeUnmount(() => {
       v-if="sourceReview"
       :book-id="book.id"
       :title="book.setup.title"
+      :initial-filters="reviewFilters"
+      @filters="reviewFilters = $event"
       @close="sourceReview = false"
       @research="
         researchId = $event;
         sourceReview = false;
         research = true;
       "
-      @chapter="
-        chapterId = $event;
-        sourceReview = false;
-      "
-      @planning="
-        sourceReview = false;
-        planning = true;
-      "
+      @chapter="openReviewChapter"
+      @planning="openReviewPlanning"
       @materials="
         sourceReview = false;
         materials = true;
@@ -231,6 +254,7 @@ onBeforeUnmount(() => {
       :actor="actor"
       :chapter-id="chapterId"
       :initial-action="initialChapterAction"
+      :return-label="returnToReview ? '保存并返回待复核清单' : undefined"
       ref="chapterEditor"
       @close="closeChapter"
       @expired="emit('expired')"
@@ -278,10 +302,12 @@ onBeforeUnmount(() => {
     />
     <NovelPlanning
       v-else-if="planning"
+      :initial-resource-id="planningResourceId"
+      :return-label="returnToReview ? '保存并返回待复核清单' : undefined"
       :book="book"
       :project="project"
       :actor="actor"
-      @close="planning = false"
+      @close="closePlanning"
       @write="chapterId = $event"
       @expired="emit('expired')"
     />
