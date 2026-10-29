@@ -14,60 +14,30 @@ import {
   type RecipeStage,
 } from "../skills/recipeTypes";
 import type { CapabilityVersion } from "../skills/capabilityTypes";
-const props = defineProps<{ book: NovelBook; project: Project }>();
-const emit = defineEmits<{ close: []; expired: []; edit: [id: string] }>();
-type Chapter = {
-  id: string;
-  title: string;
-  volume_id: string;
-  volume: string;
-  included: boolean;
-  warning: string;
-};
-type Preview = {
-  hash: string;
-  included: number;
-  missing: number;
-  warnings: number;
-  chapters: Chapter[];
-  passes: number;
-};
-type Evidence = { chapter_id: string; quote: string };
-type Finding = {
-  id: string;
-  category: string;
-  severity: string;
-  title: string;
-  explanation: string;
-  suggestion: string;
-  evidence: Evidence[];
-};
-type Pass = {
-  key: string;
-  chapter_ids: string[];
-  result: {
-    coverage: string[];
-    checks: Record<string, string>;
-    findings: Finding[];
-    carry: {
-      key: string;
-      category: string;
-      summary: string;
-      status: string;
-      evidence: Evidence[];
-    }[];
-    limits: string[];
-  };
-};
-type Report = {
-  run: RecipeRun;
-  preview: Preview;
-  stale: boolean;
-  stale_reason: string;
-  passes: Pass[];
-  covered: number;
-  limits: string[];
-};
+import { useBoundedReads } from "../../composables/useBoundedReads";
+import { useManuscriptReads } from "./useManuscriptReads";
+import NovelReviewIssues from "./NovelReviewIssues.vue";
+import {
+  bookReviewCategories,
+  type BookReviewEditTarget,
+  type BookReviewFilters,
+  type BookReviewPreview as Preview,
+  type BookReviewReport as Report,
+  type BookReviewViewState,
+} from "./bookReviewTypes";
+const props = defineProps<{
+  book: NovelBook;
+  project: Project;
+  initialRunId?: string;
+  initialFilters?: Partial<BookReviewFilters>;
+  initialFocusedIssue?: string;
+}>();
+const emit = defineEmits<{
+  close: [];
+  expired: [];
+  edit: [target: BookReviewEditTarget];
+  view: [state: BookReviewViewState];
+}>();
 type ModelOption = {
   role: string;
   name: string;
@@ -76,6 +46,11 @@ type ModelOption = {
 };
 const root = `/novels/${props.book.id}/book-reviews`;
 const recipes = `/projects/${props.project.id}/recipe-executions`;
+const { read, active } = useBoundedReads({
+  stopped: "审稿记录读取已停止。",
+  timeout: "审稿记录读取超时，输入仍保留，可以重新读取。",
+});
+const manuscriptReads = useManuscriptReads(props.book.id);
 const source = ref("draft"),
   volume = ref(""),
   notes = ref(""),
@@ -92,58 +67,50 @@ const preview = ref<Preview | null>(null),
 const catalog = ref<{ id: string; title: string }[]>([]),
   models = ref<ModelOption[]>([]),
   agents = ref<CapabilityVersion[]>([]);
-const operation = ref(newOperationID());
-const agentCursor = ref("");
-function reviewAgents(items: CapabilityVersion[]) {
-  return items.filter(
-    (v) =>
-      v.definition.kind === "agent" &&
-      v.definition.role === "critic" &&
-      Object.hasOwn(
-        (v.definition.output_schema.properties ?? {}) as object,
-        "coverage",
-      ),
-  );
-}
-async function moreAgents() {
-  await perform(async () => {
-    const page = await api<{ items: CapabilityVersion[]; next_cursor: string }>(
-      `/projects/${props.project.id}/capabilities?after=${encodeURIComponent(agentCursor.value)}`,
-    );
-    if (alive) {
-      agents.value.push(...reviewAgents(page.items));
-      agentCursor.value = page.next_cursor;
-    }
-  });
-}
-const critic = computed(() => models.value.find((o) => o.role === "critic"));
+const operation = ref(newOperationID()),
+  agentCursor = ref("");
+const selectedRun = ref(props.initialRunId ?? ""),
+  listLoading = ref(false),
+  reportLoading = ref(false),
+  setupLoading = ref(false),
+  issueBlocking = ref(false);
+const listError = ref(""),
+  reportError = ref(""),
+  setupError = ref("");
+const prepareRegion = ref<HTMLElement | null>(null);
+const savedView = ref<BookReviewViewState>({
+  runId: props.initialRunId ?? "",
+  filters: {
+    query: "",
+    severity: "",
+    category: "",
+    chapterId: "",
+    disposition: "",
+    ...props.initialFilters,
+  },
+  focusedIssue: props.initialFocusedIssue ?? "",
+});
+const critic = computed(() =>
+  models.value.find((option) => option.role === "critic"),
+);
 const stages = computed(() =>
-  (report.value?.run.steps ?? []).filter((s) => s.active),
+  (report.value?.run.steps ?? []).filter((stage) => stage.active),
 );
 const needsConsent = computed(
   () =>
     !!preview.value &&
     (preview.value.missing > 0 || preview.value.warnings > 0),
 );
-const labels: Record<string, string> = {
-  causality: "因果与时空",
-  character: "人物发展",
-  foreshadow: "伏笔与兑现",
-  theme: "主线与主题",
-  highlight: "人物高光",
-  language: "语言与细节",
-};
+const labels = bookReviewCategories;
 const checks: Record<string, string> = {
   no_issue_found: "本段未发现问题",
   issues_found: "发现待修订问题",
   insufficient: "依据不足",
 };
-const severities: Record<string, string> = {
-  major: "优先修订",
-  minor: "局部优化",
-  question: "待作者确认",
-};
 let alive = true,
+  listEpoch = 0,
+  reportEpoch = 0,
+  setupEpoch = 0,
   timer: ReturnType<typeof setTimeout> | undefined;
 watch(
   [source, volume],
@@ -160,14 +127,42 @@ watch(
   },
   { flush: "sync" },
 );
+function reviewAgents(items: CapabilityVersion[]) {
+  return items.filter(
+    (value) =>
+      value.definition.kind === "agent" &&
+      value.definition.role === "critic" &&
+      Object.hasOwn(
+        (value.definition.output_schema.properties ?? {}) as object,
+        "coverage",
+      ),
+  );
+}
 function fail(e: unknown) {
   error.value = message(e);
   if (e instanceof APIError && e.status === 401) emit("expired");
 }
+function denied(status: number) {
+  ++reportEpoch;
+  report.value = null;
+  issueBlocking.value = false;
+  reportError.value =
+    status === 401
+      ? "登录已失效，请重新登录后读取报告。"
+      : "当前权限不能继续读取本报告与处理详情。";
+}
+function remember(value: BookReviewViewState) {
+  savedView.value = value;
+  emit("view", value);
+}
 async function perform(action: () => Promise<void>) {
-  if (busy.value) return;
+  if (busy.value || issueBlocking.value) return;
   busy.value = true;
   error.value = "";
+  ++reportEpoch;
+  ++listEpoch;
+  reportLoading.value = false;
+  listLoading.value = false;
   try {
     await action();
   } catch (e) {
@@ -176,21 +171,178 @@ async function perform(action: () => Promise<void>) {
     if (alive) busy.value = false;
   }
 }
-async function reload() {
-  const list = await api<{ items: RecipeRun[] }>(root);
-  if (!alive) return;
-  runs.value = list.items;
-  const id = report.value?.run.id;
-  if (id) {
-    const value = await api<Report>(`${root}/${id}`);
-    if (alive && report.value?.run.id === id) report.value = value;
+async function loadRuns() {
+  const request = ++listEpoch,
+    currentReport = reportEpoch;
+  listLoading.value = true;
+  listError.value = "";
+  try {
+    const value = await read<{ items: RecipeRun[] }>(root);
+    if (alive && request === listEpoch) runs.value = value.items;
+  } catch (e) {
+    if (!alive || request !== listEpoch) return;
+    if (e instanceof APIError && [401, 403].includes(e.status)) {
+      runs.value = [];
+      if (currentReport === reportEpoch) denied(e.status);
+      if (e.status === 401) emit("expired");
+    }
+    listError.value = message(e);
+  } finally {
+    if (alive && request === listEpoch) listLoading.value = false;
   }
 }
+async function loadReport(id: string) {
+  if (!id) return;
+  const request = ++reportEpoch;
+  reportLoading.value = true;
+  reportError.value = "";
+  try {
+    const value = await read<Report>(`${root}/${encodeURIComponent(id)}`);
+    if (
+      !alive ||
+      !active() ||
+      request !== reportEpoch ||
+      selectedRun.value !== id
+    )
+      return;
+    if (value.run.id !== id)
+      throw new Error("读取报告与所选任务不一致，请重新读取。");
+    report.value = value;
+  } catch (e) {
+    if (!alive || request !== reportEpoch || selectedRun.value !== id) return;
+    if (e instanceof APIError && [401, 403].includes(e.status)) {
+      report.value = null;
+      issueBlocking.value = false;
+      if (e.status === 401) emit("expired");
+    }
+    reportError.value = message(e);
+  } finally {
+    if (alive && request === reportEpoch) reportLoading.value = false;
+  }
+}
+async function reload() {
+  await Promise.all([loadRuns(), loadReport(selectedRun.value)]);
+}
 async function choose(id: string) {
-  await perform(async () => {
-    const value = await api<Report>(`${root}/${id}`);
-    if (alive) report.value = value;
-  });
+  if (busy.value || issueBlocking.value) return;
+  if (selectedRun.value !== id) {
+    selectedRun.value = id;
+    report.value = null;
+    issueBlocking.value = false;
+    savedView.value = {
+      runId: id,
+      filters: {
+        query: "",
+        severity: "",
+        category: "",
+        chapterId: "",
+        disposition: "",
+      },
+      focusedIssue: "",
+    };
+  }
+  await loadReport(id);
+}
+async function loadSetup() {
+  const request = ++setupEpoch;
+  setupLoading.value = true;
+  setupError.value = "";
+  const failures: string[] = [];
+  const valid = () => alive && request === setupEpoch;
+  await Promise.allSettled([
+    (async () => {
+      try {
+        const value = await read<{ items: ModelOption[] }>(
+          `/projects/${props.project.id}/generation-options`,
+        );
+        if (valid()) models.value = value.items;
+      } catch (e) {
+        if (!valid()) return;
+        if (e instanceof APIError && [401, 403].includes(e.status)) {
+          models.value = [];
+          if (e.status === 401) emit("expired");
+        }
+        failures.push("模型配置：" + message(e));
+      }
+    })(),
+    (async () => {
+      try {
+        const value = await read<{
+          items: CapabilityVersion[];
+          next_cursor: string;
+        }>(`/projects/${props.project.id}/capabilities`);
+        if (valid()) {
+          agents.value = reviewAgents(value.items);
+          agentCursor.value = value.next_cursor;
+        }
+      } catch (e) {
+        if (!valid()) return;
+        if (e instanceof APIError && [401, 403].includes(e.status)) {
+          agents.value = [];
+          agentCursor.value = "";
+          if (e.status === 401) emit("expired");
+        }
+        failures.push("审稿方法：" + message(e));
+      }
+    })(),
+    (async () => {
+      try {
+        const value = await manuscriptReads.preview({
+          source: "draft",
+          author: "审稿",
+          language: "zh-Hans",
+        });
+        if (valid())
+          catalog.value = [
+            ...new Map(
+              value.chapters.map((chapter) => [
+                chapter.volume_id,
+                { id: chapter.volume_id, title: chapter.volume },
+              ]),
+            ).values(),
+          ];
+      } catch (e) {
+        if (!valid()) return;
+        if (e instanceof APIError && [401, 403].includes(e.status)) {
+          catalog.value = [];
+          if (e.status === 401) emit("expired");
+        }
+        failures.push("分卷目录：" + message(e));
+      }
+    })(),
+  ]);
+  if (valid()) {
+    setupError.value = failures.join("；");
+    setupLoading.value = false;
+  }
+}
+async function moreAgents() {
+  if (busy.value || setupLoading.value || !agentCursor.value) return;
+  setupLoading.value = true;
+  setupError.value = "";
+  try {
+    const value = await read<{
+      items: CapabilityVersion[];
+      next_cursor: string;
+    }>(
+      `/projects/${props.project.id}/capabilities?after=${encodeURIComponent(agentCursor.value)}`,
+    );
+    if (alive) {
+      agents.value.push(...reviewAgents(value.items));
+      agentCursor.value = value.next_cursor;
+    }
+  } catch (e) {
+    if (alive) {
+      setupError.value = message(e);
+      if (e instanceof APIError && [401, 403].includes(e.status)) {
+        agents.value = [];
+        agentCursor.value = "";
+        if (e.status === 401) emit("expired");
+      }
+    }
+  } finally {
+    if (alive) setupLoading.value = false;
+  }
 }
 async function inspect() {
   await perform(async () => {
@@ -224,10 +376,21 @@ async function prepare() {
       max_output_tokens: tokens.value,
       operation_id: operation.value,
     });
-    const result = await api<Report>(`${root}/${value.id}`);
     if (!alive) return;
-    report.value = result;
+    selectedRun.value = value.id;
+    report.value = null;
     operation.value = newOperationID();
+    savedView.value = {
+      runId: value.id,
+      filters: {
+        query: "",
+        severity: "",
+        category: "",
+        chapterId: "",
+        disposition: "",
+      },
+      focusedIssue: "",
+    };
     notice.value =
       "审稿任务已保存。准备阶段不调用模型；核对范围、模型和费用后再开始。";
     await reload();
@@ -236,12 +399,12 @@ async function prepare() {
 async function control(action: string) {
   await perform(async () => {
     if (!report.value) return;
-    const r = report.value.run;
+    const run = report.value.run;
     await api(
-      `${recipes}/${r.id}/${action === "start" ? "start" : "control"}`,
+      `${recipes}/${run.id}/${action === "start" ? "start" : "control"}`,
       "POST",
       {
-        expected_revision: r.revision,
+        expected_revision: run.revision,
         ...(action === "start" ? {} : { action }),
       },
     );
@@ -262,60 +425,62 @@ async function retry(stage: RecipeStage) {
   });
 }
 function title(id: string) {
-  return report.value?.preview.chapters.find((c) => c.id === id)?.title ?? id;
+  return (
+    report.value?.preview.chapters.find((chapter) => chapter.id === id)
+      ?.title ?? id
+  );
+}
+function prepareAgain() {
+  if (!report.value || busy.value || issueBlocking.value) return;
+  const frozen = (report.value.run.frozen as unknown as { input?: unknown })
+    .input;
+  let input = frozen;
+  if (typeof input === "string") {
+    try {
+      input = JSON.parse(input);
+    } catch {
+      input = undefined;
+    }
+  }
+  const request =
+    input && typeof input === "object"
+      ? (input as { request?: { volume_id?: unknown; notes?: unknown } })
+          .request
+      : undefined;
+  source.value = "draft";
+  volume.value =
+    typeof request?.volume_id === "string" ? request.volume_id : "";
+  if (typeof request?.notes === "string")
+    notes.value = request.notes.slice(0, 6000);
+  preview.value = null;
+  incomplete.value = false;
+  notice.value =
+    "已将原审稿范围和重点填回准备区，正文来源改为当前已保存稿。请重新检查范围并明确保存新任务；尚未准备或启动任何模型调用。";
+  prepareRegion.value?.scrollIntoView({ block: "start" });
 }
 function schedule() {
   timer = setTimeout(async () => {
     if (!alive) return;
     if (
       !busy.value &&
+      !issueBlocking.value &&
       report.value?.run.state === "RUNNING" &&
       !report.value.run.paused
-    ) {
-      try {
-        await reload();
-      } catch (e) {
-        if (alive) fail(e);
-      }
-    }
+    )
+      await reload();
     if (alive) schedule();
   }, 3000);
 }
-onMounted(
-  () =>
-    void perform(async () => {
-      const [modelOptions, capabilities, exportPreview] = await Promise.all([
-        api<{ items: ModelOption[] }>(
-          `/projects/${props.project.id}/generation-options`,
-        ),
-        api<{ items: CapabilityVersion[]; next_cursor: string }>(
-          `/projects/${props.project.id}/capabilities`,
-        ),
-        api<Preview>(`/novels/${props.book.id}/export/preview`, "POST", {
-          source: "draft",
-          volume_id: "",
-          author: "审稿",
-          language: "zh-Hans",
-        }),
-      ]);
-      if (!alive) return;
-      models.value = modelOptions.items;
-      agents.value = reviewAgents(capabilities.items);
-      agentCursor.value = capabilities.next_cursor;
-      catalog.value = [
-        ...new Map(
-          exportPreview.chapters.map((c) => [
-            c.volume_id,
-            { id: c.volume_id, title: c.volume },
-          ]),
-        ).values(),
-      ];
-      await reload();
-      if (alive) schedule();
-    }),
-);
+onMounted(() => {
+  void loadSetup();
+  void reload();
+  schedule();
+});
 onBeforeUnmount(() => {
   alive = false;
+  ++listEpoch;
+  ++reportEpoch;
+  ++setupEpoch;
   clearTimeout(timer);
 });
 </script>
@@ -327,12 +492,14 @@ onBeforeUnmount(() => {
         <p class="eyebrow">{{ book.setup.title }}</p>
         <h1>整卷与全书审稿</h1>
       </div>
-      <button :disabled="busy" @click="emit('close')">返回小说工作台</button>
+      <button :disabled="busy || issueBlocking" @click="emit('close')">
+        返回小说工作台
+      </button>
     </header>
     <p>
       按顺序阅读全文，检查人物、因果、伏笔、主题、高光和语言。问题保留原文引用，修订建议由你决定是否采用。
     </p>
-    <fieldset :disabled="busy">
+    <fieldset ref="prepareRegion" :disabled="busy || issueBlocking">
       <legend>准备审稿</legend>
       <label
         >正文来源<select v-model="source" aria-label="审稿正文来源">
@@ -345,6 +512,12 @@ onBeforeUnmount(() => {
           <option value="">整书</option>
           <option v-for="v in catalog" :key="v.id" :value="v.id">
             {{ v.title }}
+          </option>
+          <option
+            v-if="volume && !catalog.some((item) => item.id === volume)"
+            :value="volume"
+          >
+            原报告分卷 {{ volume.slice(0, 8) }}（请重新核对目录）
           </option>
         </select></label
       >
@@ -364,7 +537,15 @@ onBeforeUnmount(() => {
           </option>
         </select></label
       >
-      <button v-if="agentCursor" @click="moreAgents">加载更多已保存方法</button>
+      <button v-if="agentCursor" :disabled="setupLoading" @click="moreAgents">
+        加载更多已保存方法
+      </button>
+      <p v-if="setupError" role="alert">
+        准备区配置：{{ setupError }}。已有审稿报告仍可阅读。
+      </p>
+      <button :disabled="setupLoading" @click="loadSetup">
+        刷新准备区配置
+      </button>
       <p class="muted">
         预置 Agent 和 Skill
         会随准备任务保存到能力库，可在那里另存编辑版本后重新选择。编辑方法仍须保留证据和覆盖范围契约。
@@ -423,12 +604,20 @@ onBeforeUnmount(() => {
     <p v-if="notice" role="status">{{ notice }}</p>
     <div class="section-heading">
       <h2>审稿记录</h2>
-      <button :disabled="busy" @click="perform(reload)">刷新审稿记录</button>
+      <button
+        :disabled="busy || issueBlocking || listLoading || reportLoading"
+        @click="reload"
+      >
+        刷新审稿记录
+      </button>
     </div>
-    <p v-if="!runs.length">还没有审稿任务。</p>
+    <p v-if="listLoading || reportLoading" role="status">正在读取审稿记录…</p>
+    <p v-if="listError" role="alert">{{ listError }}</p>
+    <p v-if="reportError" role="alert">{{ reportError }}</p>
+    <p v-if="!runs.length && !listLoading && !listError">还没有审稿任务。</p>
     <ul>
       <li v-for="r in runs" :key="r.id">
-        <button :disabled="busy" @click="choose(r.id)">
+        <button :disabled="busy || issueBlocking" @click="choose(r.id)">
           {{ recipeStates[r.state] ?? r.state }} · {{ r.id.slice(0, 8) }} ·
           {{ r.spent_micros / 1000000 }} {{ r.currency }}
         </button>
@@ -457,30 +646,38 @@ onBeforeUnmount(() => {
       </p>
       <p v-if="report.run.reason">当前等待原因：{{ report.run.reason }}</p>
       <div class="actions">
+        <button :disabled="busy || issueBlocking" @click="prepareAgain">
+          以当前稿准备重新审稿
+        </button>
         <button
           v-if="report.run.state === 'PREPARED'"
-          :disabled="busy || report.stale || report.run.restored_disabled"
+          :disabled="
+            busy ||
+            issueBlocking ||
+            report.stale ||
+            report.run.restored_disabled
+          "
           @click="control('start')"
         >
           开始审稿（将调用模型）
         </button>
         <button
           v-if="report.run.state === 'RUNNING' && !report.run.paused"
-          :disabled="busy"
+          :disabled="busy || issueBlocking"
           @click="control('pause')"
         >
           暂停审稿
         </button>
         <button
           v-if="report.run.paused"
-          :disabled="busy || report.stale"
+          :disabled="busy || issueBlocking || report.stale"
           @click="control('resume')"
         >
           继续审稿
         </button>
         <button
           v-if="!['COMPLETED', 'CANCELLED'].includes(report.run.state)"
-          :disabled="busy"
+          :disabled="busy || issueBlocking"
           @click="control('cancel')"
         >
           取消任务
@@ -497,6 +694,7 @@ onBeforeUnmount(() => {
             "
             :disabled="
               busy ||
+              issueBlocking ||
               report.stale ||
               report.run.restored_disabled ||
               report.run.uncertain_calls > 0
@@ -508,7 +706,24 @@ onBeforeUnmount(() => {
         </li>
       </ul>
       <p v-for="limit in report.limits" :key="limit">{{ limit }}</p>
-      <section v-for="p in report.passes" :key="p.key" class="review-pass">
+      <NovelReviewIssues
+        :key="report.run.id"
+        :root="root"
+        :report="report"
+        :disabled="busy"
+        :initial-filters="savedView.filters"
+        :initial-focused-issue="savedView.focusedIssue"
+        @blocking="issueBlocking = $event"
+        @view="remember"
+        @edit="emit('edit', $event)"
+        @expired="emit('expired')"
+        @denied="denied"
+      />
+      <section
+        v-for="p in report.passes"
+        :key="p.step_id ?? p.key"
+        class="review-pass"
+      >
         <h3>{{ p.chapter_ids.map(title).join(" / ") }}</h3>
         <dl class="checks">
           <template
@@ -521,17 +736,10 @@ onBeforeUnmount(() => {
         <p v-if="!p.result.findings.length">
           本段没有列出问题，请结合依据不足项与作者判断阅读。
         </p>
-        <article v-for="f in p.result.findings" :key="f.id" class="finding">
-          <h4>{{ severities[f.severity] }} · {{ f.title }}</h4>
-          <p>{{ f.explanation }}</p>
-          <p>建议：{{ f.suggestion }}</p>
-          <blockquote v-for="(e, i) in f.evidence" :key="i">
-            <p>{{ e.quote }}</p>
-            <button :disabled="busy" @click="emit('edit', e.chapter_id)">
-              打开《{{ title(e.chapter_id) }}》编辑
-            </button>
-          </blockquote>
-        </article>
+        <p v-else>
+          本段列出
+          {{ p.result.findings.length }} 项问题，可在上方问题工作台筛选和处理。
+        </p>
         <details>
           <summary>向后段传递的状态（{{ p.result.carry.length }} 项）</summary>
           <ul>

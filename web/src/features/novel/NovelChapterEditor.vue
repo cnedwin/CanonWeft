@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { api, APIError, message, type Actor, type Project } from "../../api";
 import type { NovelBook } from "./types";
 import type { ChapterDraft } from "./chapterTypes";
@@ -11,6 +18,8 @@ import NovelEditorialDesk from "./NovelEditorialDesk.vue";
 import NovelChapterResearch from "./NovelChapterResearch.vue";
 import NovelInlineRefinement from "./NovelInlineRefinement.vue";
 import NovelWritingCard from "./NovelWritingCard.vue";
+import NovelReviewAnchor from "./NovelReviewAnchor.vue";
+import type { BookReviewEditTarget } from "./bookReviewTypes";
 import NovelBasisComparison from "./NovelBasisComparison.vue";
 import { useBoundedReads } from "../../composables/useBoundedReads";
 import { validBasisPreview, type ChapterBasisPreview } from "./chapterBasis";
@@ -30,6 +39,7 @@ const props = defineProps<{
   chapterId: string;
   initialAction?: "write" | "refine";
   returnLabel?: string;
+  reviewTarget?: BookReviewEditTarget | null;
 }>();
 const emit = defineEmits<{ close: []; expired: [] }>();
 const root = `/novels/${props.book.id}/chapters`;
@@ -54,6 +64,49 @@ const assistantMethod = ref<"fanqie-polish" | undefined>();
 const selectedScope = ref<RefinementScope | null>(null);
 const selectedQuote = computed(() => selectedScope.value?.quote ?? "");
 const refinementRegion = ref<HTMLElement | null>(null);
+const refinementEditor = ref<InstanceType<typeof NovelInlineRefinement> | null>(
+  null,
+);
+const manuscriptField = ref<HTMLTextAreaElement | null>(null);
+const reviewAnchorVisible = ref(true);
+async function locateReviewQuote(value: {
+  start: number;
+  end: number;
+  text: string;
+}) {
+  if (
+    locked.value ||
+    assistant.value ||
+    !draft.value ||
+    draft.value.document.text !== value.text
+  )
+    return;
+  try {
+    selectedScope.value = captureRefinement(value.text, value.start, value.end);
+  } catch {
+    selectedScope.value = null;
+  }
+  await nextTick();
+  if (draft.value?.document.text !== value.text) return;
+  manuscriptField.value?.focus();
+  manuscriptField.value?.setSelectionRange(value.start, value.end);
+  manuscriptField.value?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
+}
+function addReviewInstruction(value: string) {
+  if (!refinementEditor.value?.addInstruction(value)) {
+    notice.value =
+      "已有精修要求较长或当前不可编辑，请先整理后再带入；原输入保持原样。";
+    return;
+  }
+  notice.value = "已补充审稿问题到原地精修要求，尚未生成或修改正文。";
+  refinementRegion.value?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
+}
 const sessionScope = ref<RefinementScope | null>(null);
 const sessionDocument = ref("");
 const sessionChanged = ref(false);
@@ -701,6 +754,21 @@ onBeforeUnmount(() => {
         @confirm="confirmBasis"
         @close="closeBasis"
       />
+      <NovelReviewAnchor
+        v-if="
+          reviewTarget &&
+          reviewAnchorVisible &&
+          reviewTarget.chapter_id === draft.document.chapter_id
+        "
+        :target="reviewTarget"
+        :text="draft.document.text"
+        :hash="draft.hash"
+        :saved="!dirty && !saving"
+        :disabled="locked || assistant"
+        @locate="locateReviewQuote"
+        @refine="addReviewInstruction"
+        @close="reviewAnchorVisible = false"
+      />
       <fieldset :disabled="locked" class="chapter-form">
         <label
           >章节标题<input v-model="draft.document.title" maxlength="300"
@@ -738,6 +806,7 @@ onBeforeUnmount(() => {
         </div>
         <label
           >章节正文<textarea
+            ref="manuscriptField"
             v-model="draft.document.text"
             @select="selectQuote"
             rows="24"
@@ -747,6 +816,7 @@ onBeforeUnmount(() => {
       </fieldset>
       <div ref="refinementRegion">
         <NovelInlineRefinement
+          ref="refinementEditor"
           :text="draft.document.text"
           :selection="selectedScope"
           :disabled="locked || assistant"

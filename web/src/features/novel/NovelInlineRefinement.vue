@@ -15,6 +15,17 @@ const emit = defineEmits<{
 }>();
 const target = ref<"selection" | "chapter">("chapter");
 const instruction = ref("");
+function addInstruction(value: string) {
+  if (props.disabled) return false;
+  if (instruction.value.includes(value)) return true;
+  const next = [instruction.value.trim(), value.trim()]
+    .filter(Boolean)
+    .join("\n\n");
+  if ([...next].length > 4000) return false;
+  instruction.value = next;
+  return true;
+}
+defineExpose({ addInstruction });
 watch(
   () => props.selection,
   (value) => {

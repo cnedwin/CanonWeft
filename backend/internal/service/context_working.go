@@ -59,7 +59,7 @@ func (s *Knowledge) WorkingChoices(ctx context.Context, a domain.Actor, project,
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT kind,id,name,version,state FROM (
  SELECT 'resource_draft' AS kind,r.id,r.name,CAST(d.revision AS CHAR) AS version,'PRIVATE_DRAFT' AS state
- FROM resource_drafts d JOIN resources r ON r.id=d.resource_id WHERE r.project_id=? AND r.branch_id=? AND d.actor_id=?
+ FROM resource_drafts d JOIN resources r ON r.id=d.resource_id WHERE r.project_id=? AND r.branch_id=? AND d.actor_id=? AND r.kind<>'novel_review_dispositions'
  UNION ALL SELECT 'ip_draft',branch_id,?,CAST(revision AS CHAR),'PRIVATE_DRAFT' FROM ip_drafts WHERE branch_id=? AND actor_id=?
  UNION ALL SELECT 'ip_candidate',id,CONCAT('设定候选 · ',CAST(created_at AS CHAR)),content_hash,status FROM ip_revisions WHERE branch_id=? AND status IN ('PREPARED','READY')
  UNION ALL SELECT 'release_candidate',id,CONCAT('资料候选 · ',CAST(created_at AS CHAR)),content_hash,status FROM artifact_releases WHERE project_id=? AND branch_id=? AND status IN ('PREPARED','READY')
@@ -133,7 +133,7 @@ func (s *Knowledge) workingInput(ctx context.Context, tx *sql.Tx, actor, project
 		if err != nil {
 			return item, err
 		}
-		if r.BranchID != b.ID {
+		if r.BranchID != b.ID || r.Kind == "novel_review_dispositions" {
 			return item, domain.ErrForbidden
 		}
 		d, err := resourceDraftTx(ctx, tx, actor, project, ref.ID)
