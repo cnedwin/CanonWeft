@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"novelstudio/internal/backup"
+	"novelstudio/internal/binlog"
 	"novelstudio/internal/storage"
 )
 
@@ -97,10 +99,18 @@ func startLogProtection(ctx context.Context, database, serverUUID string) (*back
 		defer close(done)
 		runner.Run(running, func(view backup.LogRecoveryView, err error) {
 			if err != nil && running.Err() == nil {
-				log.Printf("Automatic log protection needs attention: %s", view.State)
+				log.Print(logProtectionFailure(view, err))
 			}
 		})
 	}()
 	ok = true
 	return runner, func() { stop(); <-done; _ = runner.Close(); _ = db.Close() }, nil
+}
+
+func logProtectionFailure(view backup.LogRecoveryView, err error) string {
+	if details, ok := binlog.ReadFailureInfo(err); ok {
+		return fmt.Sprintf("Automatic log protection needs attention: %s code=%s stage=%s position=%s:%d event=%d", view.State, details.Code, details.Stage, details.Position.File, details.Position.Offset, details.EventType)
+	}
+	// Never format arbitrary errors: parser/driver errors can contain payloads.
+	return fmt.Sprintf("Automatic log protection needs attention: %s code=CAPTURE_UNCLASSIFIED", view.State)
 }

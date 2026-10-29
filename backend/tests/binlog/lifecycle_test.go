@@ -209,7 +209,8 @@ func TestPartialJSONEnvelopeRejectedBeforeDecoderDiagnostics(t *testing.T) {
 	if captureErr != nil || len(output) != 0 {
 		t.Fatal("decoder emitted diagnostics containing source data")
 	}
-	if err == nil || err.Error() != "unsupported source event envelope" || strings.Contains(err.Error(), marker) {
+	info, diagnosed := binlog.ReadFailureInfo(err)
+	if err == nil || !diagnosed || info.Code != "PARSE_EVENT_REJECTED" || info.Stage != "parse" || info.Position != (binlog.Position{File: "binlog.000001", Offset: 4}) || info.EventType != uint8(replication.PARTIAL_UPDATE_ROWS_EVENT) || strings.Contains(err.Error(), marker) {
 		t.Fatal("unsupported raw payload entered the dependency decoder", err)
 	}
 	if peer.connections.Load() != 1 || peer.kills.Load() != 0 {

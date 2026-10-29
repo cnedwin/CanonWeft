@@ -35,7 +35,7 @@ func RunMigrationsTo(ctx context.Context, db *sql.DB, target int) error {
 		return domain.ErrNotReady
 	}
 	defer conn.ExecContext(context.Background(), "SELECT RELEASE_LOCK(CONCAT(DATABASE(), ':schema'))")
-	if _, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version(id INT PRIMARY KEY, version INT NOT NULL, checksum CHAR(64) NOT NULL) ENGINE=InnoDB`); err != nil {
+	if err = ensureMigrationTable(ctx, conn, "schema_version", `CREATE TABLE IF NOT EXISTS schema_version(id INT PRIMARY KEY, version INT NOT NULL, checksum CHAR(64) NOT NULL) ENGINE=InnoDB`); err != nil {
 		return err
 	}
 	var version int
@@ -87,6 +87,22 @@ func RunMigrationsTo(ctx context.Context, db *sql.DB, target int) error {
 	}
 	return nil
 }
+
+// Call only while holding the schema advisory lock. Even a no-op CREATE TABLE
+// IF NOT EXISTS enters MySQL's binary log, so ordinary startup must first check
+// the catalog without issuing DDL against an existing migration table.
+func ensureMigrationTable(ctx context.Context, conn *sql.Conn, name, statement string) error {
+	var count int
+	if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?", name).Scan(&count); err != nil {
+		return err
+	}
+	if count != 0 {
+		return nil
+	}
+	_, err := conn.ExecContext(ctx, statement)
+	return err
+}
+
 func CheckVersion(ctx context.Context, db *sql.DB) error {
 	var version int
 	if err := db.QueryRowContext(ctx, "SELECT version FROM schema_version WHERE id=1").Scan(&version); err != nil {

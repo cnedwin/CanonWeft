@@ -115,7 +115,7 @@ func initializeHistory(ctx context.Context, conn *sql.Conn, version int, catalog
 			return err
 		}
 	}
-	if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations(version INT PRIMARY KEY,name VARCHAR(120) NOT NULL,checksum CHAR(64) NOT NULL,origin VARCHAR(24) NOT NULL,recorded_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)) ENGINE=InnoDB`); err != nil {
+	if err := ensureMigrationTable(ctx, conn, "schema_migrations", `CREATE TABLE IF NOT EXISTS schema_migrations(version INT PRIMARY KEY,name VARCHAR(120) NOT NULL,checksum CHAR(64) NOT NULL,origin VARCHAR(24) NOT NULL,recorded_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)) ENGINE=InnoDB`); err != nil {
 		return err
 	}
 	var initialized bool
