@@ -116,7 +116,10 @@ func (p *logPeer) serve(socket net.Conn) {
 			p.kills.Add(1)
 		}
 		var result *gomysql.Result
-		if strings.HasPrefix(query, "SELECT @@log_bin") {
+		if query == "SHOW BINARY LOGS" && p.stage == "catalog" {
+			p.stall(socket)
+			return
+		} else if strings.HasPrefix(query, "SELECT @@log_bin") {
 			if p.stage == "preflight" {
 				p.stall(socket)
 				return
@@ -148,11 +151,15 @@ func (p *logPeer) read(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return r.ReadRange(ctx, "target", []binlog.TableSchema{{Name: "documents", Columns: []string{"id", "body"}, PrimaryKey: []int{0}}}, binlog.Position{File: "binlog.000001", Offset: 4}, binlog.Position{File: "binlog.000001", Offset: 1000}, func(binlog.Transaction) error { return errors.New("unexpected transaction") })
+	end := binlog.Position{File: "binlog.000001", Offset: 1000}
+	if p.stage == "catalog" {
+		end.File = "binlog.000002"
+	}
+	return r.ReadRange(ctx, "target", []binlog.TableSchema{{Name: "documents", Columns: []string{"id", "body"}, PrimaryKey: []int{0}}}, binlog.Position{File: "binlog.000001", Offset: 4}, end, func(binlog.Transaction) error { return errors.New("unexpected transaction") })
 }
 
 func TestLogCancellationClosesOnlyOwnedConnection(t *testing.T) {
-	for _, stage := range []string{"handshake", "preflight", "setup", "stream"} {
+	for _, stage := range []string{"handshake", "preflight", "catalog", "setup", "stream"} {
 		t.Run(stage, func(t *testing.T) {
 			peer := newLogPeer(t, stage, nil)
 			ctx, cancel := context.WithCancel(context.Background())
@@ -182,6 +189,20 @@ func TestLogCancellationClosesOnlyOwnedConnection(t *testing.T) {
 				t.Fatal("cleanup opened another connection or issued KILL")
 			}
 		})
+	}
+}
+
+func TestLogCatalogDeadlineKeepsContextAndSafeDiagnostic(t *testing.T) {
+	peer := newLogPeer(t, "catalog", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	err := peer.read(ctx)
+	info, ok := binlog.ReadFailureInfo(err)
+	if !errors.Is(err, context.DeadlineExceeded) || !ok || info.Code != "READ_DEADLINE_EXCEEDED" || info.Stage != "source_catalog" {
+		t.Fatal("catalog deadline lost its context", err)
+	}
+	if peer.connections.Load() != 1 || peer.kills.Load() != 0 {
+		t.Fatal("catalog cancellation reconnected or issued KILL")
 	}
 }
 

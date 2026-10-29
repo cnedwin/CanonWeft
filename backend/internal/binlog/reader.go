@@ -114,6 +114,16 @@ func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableS
 	if order == 0 {
 		return observeEmpty(reading, connection, start)
 	}
+	if start.File != end.File {
+		code, stage = "SOURCE_CATALOG_REJECTED", "source_catalog"
+		decoder.closedLogEnds, err = readClosedLogEnds(connection, start, end)
+		if err != nil {
+			if reading.Err() != nil {
+				return reading.Err()
+			}
+			return err
+		}
+	}
 	code, stage = "STREAM_SETUP_FAILED", "stream_setup"
 	result, err := connection.Execute("SET @master_binlog_checksum='NONE', @source_binlog_checksum='NONE'")
 	if err != nil {
@@ -156,9 +166,13 @@ func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableS
 			return parseErr
 		}
 		code, stage = "DECODE_EVENT_REJECTED", "decode"
+		previousFile := decoder.position.File
 		transaction, decodeErr := decoder.Consume(event)
 		if decodeErr != nil {
 			return decodeErr
+		}
+		if decoder.position.File != previousFile {
+			formatSeen = false
 		}
 		code, stage = "RECOVERY_BOUNDARY_REJECTED", "boundary"
 		order, err = comparePositions(decoder.position, end)
@@ -175,7 +189,7 @@ func (r *Reader) ReadRange(ctx context.Context, database string, tables []TableS
 			}
 		}
 		if order == 0 {
-			if decoder.pending != nil {
+			if decoder.pending != nil || decoder.awaitingFormat {
 				return errors.New("requested recovery boundary splits a transaction")
 			}
 			return reading.Err()
@@ -230,7 +244,7 @@ func parseSourceEvent(parser *replication.BinlogParser, raw []byte, formatSeen *
 	kind := replication.EventType(raw[4])
 	switch kind {
 	case replication.ROTATE_EVENT, replication.FORMAT_DESCRIPTION_EVENT:
-	case replication.PREVIOUS_GTIDS_EVENT, replication.ANONYMOUS_GTID_EVENT, replication.GTID_EVENT,
+	case replication.STOP_EVENT, replication.PREVIOUS_GTIDS_EVENT, replication.ANONYMOUS_GTID_EVENT, replication.GTID_EVENT,
 		replication.QUERY_EVENT, replication.TABLE_MAP_EVENT, replication.WRITE_ROWS_EVENTv2,
 		replication.UPDATE_ROWS_EVENTv2, replication.DELETE_ROWS_EVENTv2, replication.XID_EVENT:
 		if !*formatSeen {
