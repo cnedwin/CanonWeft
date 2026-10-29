@@ -7,6 +7,7 @@ import {
   manuscriptChangeLabels,
 } from "./manuscriptComparison";
 import { useManuscriptReads } from "./useManuscriptReads";
+import NovelEditionProseCompare from "./NovelEditionProseCompare.vue";
 
 const props = defineProps<{
   bookId: string;
@@ -42,6 +43,17 @@ const rows = computed(() =>
     (row) => !onlyChanges.value || row.changes.length > 0,
   ),
 );
+const selectedChapter = ref("");
+const selectedRow = computed(() =>
+  comparison.value?.rows.find((row) => row.id === selectedChapter.value),
+);
+const selectedLeft = ref<{ id: string; name: string } | null>(null);
+const selectedRight = ref<{ id: string; name: string } | null>(null);
+function proseDenied(status: number) {
+  reset();
+  error.value = "当前权限不能继续读取这些稿本，请核对登录或作品访问权限。";
+  if (status === 401) emit("expired");
+}
 let request = 0;
 function reset() {
   ++request;
@@ -49,6 +61,9 @@ function reset() {
   busy.value = false;
   error.value = "";
   result.value = null;
+  selectedChapter.value = "";
+  selectedLeft.value = null;
+  selectedRight.value = null;
 }
 watch([leftID, rightID], reset, { flush: "sync" });
 watch(
@@ -112,6 +127,8 @@ async function compare() {
       leftName: `${left.name} · ${left.id.slice(0, 8)}`,
       rightName: `${right.name} · ${right.id.slice(0, 8)}`,
     };
+    selectedLeft.value = { id: left.id, name: left.name };
+    selectedRight.value = { id: right.id, name: right.name };
   } catch (e) {
     if (!reads.active() || current !== request) return;
     result.value = null;
@@ -193,7 +210,7 @@ function signed(value: number) {
         {{ signed(comparison.charactersDelta) }}）。同一章可能有多项变化。
       </p>
       <p class="muted">
-        章节版本变化也可能来自写作依据；字符数相同不能证明内容相同。这里只比较保存的目录与版本信息，不逐字读取或判断正文质量。
+        章节版本变化也可能来自写作依据；字符数相同不能证明内容相同。可按章读取两版原文，查看具体正文差异；对照不判断文学质量。
       </p>
       <label class="changes-toggle">
         <input v-model="onlyChanges" type="checkbox" />仅看变化章节
@@ -216,6 +233,7 @@ function signed(value: number) {
               <th scope="col">新稿本</th>
               <th scope="col">变化</th>
               <th scope="col">字符差</th>
+              <th scope="col">正文</th>
             </tr>
           </thead>
           <tbody>
@@ -258,10 +276,31 @@ function signed(value: number) {
                 }}
               </td>
               <td>{{ signed(row.charactersDelta) }}</td>
+              <td>
+                <button
+                  :disabled="
+                    disabled || (!row.left?.included && !row.right?.included)
+                  "
+                  :aria-label="`对照本章正文 ${row.id}`"
+                  @click="selectedChapter = row.id"
+                >
+                  对照本章正文
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <NovelEditionProseCompare
+        v-if="selectedRow && selectedLeft && selectedRight"
+        :key="`${selectedLeft.id}:${selectedRight.id}:${selectedRow.id}`"
+        :book-id="bookId"
+        :chapter-id="selectedRow.id"
+        :left="{ ...selectedLeft, chapter: selectedRow.left }"
+        :right="{ ...selectedRight, chapter: selectedRow.right }"
+        @close="selectedChapter = ''"
+        @denied="proseDenied"
+      />
     </div>
   </section>
 </template>
