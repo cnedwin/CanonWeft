@@ -11,6 +11,9 @@ import NovelEditorialDesk from "./NovelEditorialDesk.vue";
 import NovelChapterResearch from "./NovelChapterResearch.vue";
 import NovelInlineRefinement from "./NovelInlineRefinement.vue";
 import NovelWritingCard from "./NovelWritingCard.vue";
+import NovelBasisComparison from "./NovelBasisComparison.vue";
+import { useBoundedReads } from "../../composables/useBoundedReads";
+import { validBasisPreview, type ChapterBasisPreview } from "./chapterBasis";
 import {
   captureRefinement,
   refinementPrompt,
@@ -26,15 +29,26 @@ const props = defineProps<{
   actor: Actor;
   chapterId: string;
   initialAction?: "write" | "refine";
+  returnLabel?: string;
 }>();
 const emit = defineEmits<{ close: []; expired: [] }>();
 const root = `/novels/${props.book.id}/chapters`;
+const basisReads = useBoundedReads({
+  stopped: "依据对照读取已停止。",
+  timeout: "依据对照读取超时，原稿未改动，可以重新读取。",
+});
 const draft = ref<ChapterDraft | null>(null);
 const branch = ref<Branch | null>(null);
 const suggestion = ref<ChapterDraft | null>(null);
 const assistant = ref(false),
   assistantBlocking = ref(false);
 const ledgerOpen = ref(false);
+const basisVisible = ref(false),
+  basisLoading = ref(false),
+  basisError = ref("");
+const basisPreview = ref<ChapterBasisPreview | null>(null);
+let basisSequence = 0;
+let basisDocument = "";
 const assistantNotes = ref("");
 const assistantMethod = ref<"fanqie-polish" | undefined>();
 const selectedScope = ref<RefinementScope | null>(null);
@@ -146,8 +160,36 @@ let disposed = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pending: Promise<void> | undefined;
 
+function invalidateBasis(reason = "") {
+  ++basisSequence;
+  basisPreview.value = null;
+  basisLoading.value = false;
+  basisError.value = reason;
+}
+function closeBasis() {
+  basisVisible.value = false;
+  invalidateBasis();
+}
+watch(
+  [
+    text,
+    () => draft.value?.revision,
+    () => draft.value?.hash,
+    () => draft.value?.resource.id,
+    assistant,
+    ledgerOpen,
+  ],
+  () => {
+    if (basisVisible.value)
+      invalidateBasis("章稿或写作上下文已变化，请重新读取依据对照。");
+  },
+  { flush: "sync" },
+);
+
 function fail(e: unknown) {
   error.value = message(e);
+  if (e instanceof APIError && [401, 403].includes(e.status))
+    invalidateBasis("当前权限不能继续读取依据对照，请核对登录和访问权限。");
   if (e instanceof APIError && e.status === 401) emit("expired");
 }
 function install(value: ChapterDraft) {
@@ -222,6 +264,8 @@ async function close() {
 }
 async function openAssistant() {
   if (assistant.value || busy.value || !canEdit.value) return;
+  if (basisVisible.value)
+    invalidateBasis("已切换到写作助手，请返回后重新核对依据。");
   const sequence = ++assistantSequence.value;
   await perform(async () => {
     await save();
@@ -317,6 +361,8 @@ async function openAssistant() {
 }
 async function openLedger() {
   if (assistant.value || ledgerOpen.value || !canEdit.value) return;
+  if (basisVisible.value)
+    invalidateBasis("已切换到账本核对，请返回后重新读取依据对照。");
   await perform(async () => {
     await save();
     if (disposed || dirty.value || !draft.value) return;
@@ -377,18 +423,127 @@ function discardAssistantInput() {
 async function refreshBasis() {
   if (assistant.value || ledgerOpen.value || !canEdit.value) return;
   await perform(async () => {
+    invalidateBasis();
     await save();
     if (!draft.value || disposed || dirty.value) return;
-    const value = await api<ChapterDraft>(
-      `${root}/${draft.value.resource.id}/basis`,
-      "POST",
-      { revision: draft.value.revision },
-    );
+    basisVisible.value = true;
+    basisDocument = text.value;
+    const current = {
+      id: draft.value.resource.id,
+      chapter: draft.value.document.chapter_id,
+      revision: draft.value.revision,
+      hash: draft.value.hash,
+      baseHead: draft.value.base_head,
+    };
+    const sequence = ++basisSequence;
+    basisLoading.value = true;
+    const isCurrent = () =>
+      !disposed &&
+      basisReads.active() &&
+      sequence === basisSequence &&
+      !!draft.value &&
+      basisDocument === text.value &&
+      draft.value.resource.id === current.id &&
+      draft.value.revision === current.revision &&
+      draft.value.hash === current.hash &&
+      !dirty.value;
+    // A read never holds the editor's write lock or inherits write cancellation.
+    void (async () => {
+      try {
+        const value = await basisReads.read<unknown>(
+          `${root}/${current.id}/basis-preview`,
+        );
+        if (!isCurrent()) return;
+        if (
+          !validBasisPreview(value) ||
+          value.resource_id !== current.id ||
+          value.chapter_id !== current.chapter ||
+          value.revision !== current.revision ||
+          value.hash !== current.hash ||
+          value.base_head !== current.baseHead
+        )
+          throw new Error("依据对照与当前保存稿不一致，请重新读取。");
+        basisPreview.value = value;
+      } catch (e) {
+        if (!isCurrent()) return;
+        basisPreview.value = null;
+        basisError.value = message(e);
+        if (e instanceof APIError && e.status === 401) emit("expired");
+      } finally {
+        if (isCurrent()) basisLoading.value = false;
+      }
+    })();
+  });
+}
+async function confirmBasis() {
+  if (assistant.value || ledgerOpen.value || !canEdit.value || saving.value)
+    return;
+  const preview = basisPreview.value;
+  const current = draft.value;
+  if (
+    !preview ||
+    !current ||
+    !preview.can_refresh ||
+    dirty.value ||
+    basisDocument !== text.value ||
+    preview.resource_id !== current.resource.id ||
+    preview.revision !== current.revision ||
+    preview.hash !== current.hash
+  )
+    return;
+  const original = JSON.parse(text.value) as ChapterDraft["document"];
+  await perform(async () => {
+    let value: ChapterDraft;
+    try {
+      value = await api<ChapterDraft>(
+        `${root}/${current.resource.id}/basis`,
+        "POST",
+        { revision: current.revision, basis_hash: preview.basis_hash },
+      );
+    } catch (e) {
+      if (e instanceof APIError && [401, 403, 409].includes(e.status))
+        invalidateBasis("依据或权限已经变化，请重新读取对照后再确认。");
+      throw e;
+    }
     if (disposed) return;
+    const {
+      detail: oldDetail,
+      settings_revision: oldRevision,
+      settings_hash: oldHash,
+      ip_head: oldIP,
+      ...oldManuscript
+    } = original;
+    const {
+      detail: newDetail,
+      settings_revision: newRevision,
+      settings_hash: newHash,
+      ip_head: newIP,
+      ...newManuscript
+    } = value.document;
+    void oldDetail;
+    void oldRevision;
+    void oldHash;
+    void oldIP;
+    void newDetail;
+    void newRevision;
+    void newHash;
+    void newIP;
+    if (
+      value.resource.id !== current.resource.id ||
+      value.revision !== current.revision ||
+      JSON.stringify(oldManuscript) !== JSON.stringify(newManuscript)
+    ) {
+      invalidateBasis(
+        "更新回执与原稿不一致，未替换当前正文。请重新核对保存状态。",
+      );
+      throw new Error("写作依据更新回执不匹配，当前手稿保持原样。");
+    }
     draft.value = value;
     await save();
+    if (disposed) return;
+    closeBasis();
     notice.value =
-      "已更新细纲与设定依据，正文原样保留。请核对内容是否需要修改。";
+      "已更新细纲与设定依据，正文原样保留。请按刚才的变化核对正文，可继续手改或使用下方原地精修；尚未重新记账、审稿或正式采用。";
   });
 }
 async function adopt() {
@@ -488,7 +643,7 @@ onBeforeUnmount(() => {
         <h1>章节写作</h1>
       </div>
       <button :disabled="busy || assistant || ledgerOpen" @click="close">
-        保存并返回规划
+        {{ returnLabel ?? "保存并返回规划" }}
       </button>
     </header>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
@@ -511,7 +666,10 @@ onBeforeUnmount(() => {
         <button :disabled="locked" @click="() => perform(save)">
           保存私人稿
         </button>
-        <button :disabled="locked || assistant" @click="refreshBasis">
+        <button
+          :disabled="locked || assistant || basisLoading"
+          @click="refreshBasis"
+        >
           更新写作依据，保留正文
         </button>
         <button :disabled="locked || assistant" @click="regularAssistant">
@@ -533,6 +691,16 @@ onBeforeUnmount(() => {
           放弃助手输入并返回正文
         </button>
       </div>
+      <NovelBasisComparison
+        v-if="basisVisible"
+        :preview="basisPreview"
+        :busy="basisLoading"
+        :error="basisError"
+        :disabled="locked || assistant || saving || dirty"
+        @retry="refreshBasis"
+        @confirm="confirmBasis"
+        @close="closeBasis"
+      />
       <fieldset :disabled="locked" class="chapter-form">
         <label
           >章节标题<input v-model="draft.document.title" maxlength="300"

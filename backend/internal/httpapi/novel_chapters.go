@@ -18,6 +18,14 @@ func registerNovelChapters(g *echo.Group, workspace *service.Workspace, actor fu
 	registerNovelBookReviews(g, writer, actor)
 	registerNovelCharacters(g, writer, actor)
 	const root = "/novels/:novel/chapters"
+	g.GET(root+"/:resource/basis-preview", func(c *echo.Context) error {
+		result, err := svc.BasisPreview(c.Request().Context(), actor(c).ID, c.Param("novel"), c.Param("resource"))
+		if err != nil {
+			return novelEntryError(c, err)
+		}
+		c.Response().Header().Set("Cache-Control", "no-store")
+		return c.JSON(200, result)
+	})
 	g.GET(root+"/:resource/writing-card", func(c *echo.Context) error {
 		result, err := svc.WritingCard(c.Request().Context(), actor(c).ID, c.Param("novel"), c.Param("resource"))
 		if err != nil {
@@ -178,12 +186,13 @@ func registerNovelChapters(g *echo.Group, workspace *service.Workspace, actor fu
 	})
 	g.POST(root+"/:resource/basis", func(c *echo.Context) error {
 		var in struct {
-			Revision int64 `json:"revision"`
+			Revision  int64  `json:"revision"`
+			BasisHash string `json:"basis_hash"`
 		}
 		if e := decode(c, &in); e != nil {
 			return novelEntryError(c, e)
 		}
-		v, e := svc.Basis(c.Request().Context(), actor(c).ID, c.Param("novel"), c.Param("resource"), in.Revision)
+		v, e := svc.Basis(c.Request().Context(), actor(c).ID, c.Param("novel"), c.Param("resource"), in.Revision, in.BasisHash)
 		if e != nil {
 			return novelEntryError(c, e)
 		}

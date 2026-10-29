@@ -31,6 +31,8 @@ const props = defineProps<{
   book: NovelBook;
   project: Project;
   actor: Actor;
+  initialResourceId?: string;
+  returnLabel?: string;
 }>();
 const emit = defineEmits<{
   close: [];
@@ -502,7 +504,15 @@ onMounted(async () => {
     await loadOverview();
     if (!disposed) {
       busy.value = false;
-      await open("world");
+      if (props.initialResourceId) {
+        const target = overview.value?.resources.find(
+          (resource) => resource.id === props.initialResourceId,
+        );
+        if (!target)
+          throw new Error("目标规划已不在当前小说中，请返回清单重新检查。");
+        busy.value = true;
+        await loadDocument(target.id);
+      } else await open("world");
     }
   } catch (e) {
     if (!disposed) fail(e);
@@ -528,7 +538,7 @@ onBeforeUnmount(() => {
         :disabled="busy || !!candidate || !!assistantBranch"
         @click="close"
       >
-        保存并返回小说
+        {{ returnLabel ?? "保存并返回小说" }}
       </button>
     </header>
     <p>
