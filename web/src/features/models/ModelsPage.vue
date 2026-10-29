@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api, APIError, message } from "../../api";
 import { useModelReads } from "./modelReads";
+import ModelSetupChecklist from "./ModelSetupChecklist.vue";
+import type { ModelSetupReport, SetupTarget } from "./modelSetup";
 import BudgetPanel from "./BudgetPanel.vue";
 import PricePanel from "./PricePanel.vue";
 import ReconciliationPanel from "./ReconciliationPanel.vue";
@@ -41,6 +43,7 @@ interface Binding {
   revision: number;
 }
 interface Settings {
+  setup?: ModelSetupReport;
   catalog: Preset[];
   connections: Connection[];
   bindings: Binding[];
@@ -195,7 +198,12 @@ async function bind() {
 }
 function bindingName(b: Binding) {
   const c = settings.value.connections.find((c) => c.id === b.connection_id);
-  return `${c?.name ?? "配置已不存在"} · 版本 ${b.connection_revision}${!c?.enabled ? " · 已停用" : c.revision !== b.connection_revision ? " · 需要重新绑定新版" : ""}`;
+  return `${c?.name ?? "配置已不存在"} · 版本 ${b.connection_revision}${!c?.enabled ? " · 已停用" : c.revision !== b.connection_revision ? " · 固定旧版，请参照配置检查核对" : ""}`;
+}
+function locateSetup(target: SetupTarget) {
+  const element = document.getElementById(`model-setup-${target}`);
+  element?.focus({ preventScroll: true });
+  element?.scrollIntoView({ block: "start" });
 }
 onMounted(() => perform(refresh));
 onBeforeUnmount(() => {
@@ -227,8 +235,15 @@ onBeforeUnmount(() => {
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="notice" role="status" class="notice">{{ notice }}</p>
     <p v-if="dirty" class="notice">有未保存的配置。请保存或放弃修改后切换。</p>
+    <ModelSetupChecklist
+      v-if="settings.setup"
+      :report="settings.setup"
+      :names="names"
+      :connections="settings.connections"
+      @locate="locateSetup"
+    />
     <div class="layout">
-      <section class="panel">
+      <section id="model-setup-connections" class="panel" tabindex="-1">
         <h2>服务商</h2>
         <p class="muted">
           预置型号来自官方目录，实际账户权限和生成质量仍需单独验证。可填写其他正式型号。
@@ -353,7 +368,7 @@ onBeforeUnmount(() => {
         </form>
       </section>
     </div>
-    <section class="panel">
+    <section id="model-setup-bindings" class="panel" tabindex="-1">
       <h2>专业用途绑定</h2>
       <p class="muted">
         创作、记账、审查分别绑定；这里只选择模型，不代表对应 Agent
@@ -387,13 +402,20 @@ onBeforeUnmount(() => {
         </li>
       </ul>
     </section>
-    <BudgetPanel ref="budgetPanel" @expired="emit('expired')" />
+    <BudgetPanel
+      id="model-setup-budget"
+      ref="budgetPanel"
+      tabindex="-1"
+      @expired="emit('expired')"
+    />
     <ReconciliationPanel
       @expired="emit('expired')"
       @blocking="accountingBlocking = $event"
       @recorded="budgetPanel?.refreshTotals()"
     />
     <PricePanel
+      id="model-setup-prices"
+      tabindex="-1"
       :connections="settings.connections"
       @expired="emit('expired')"
     />
