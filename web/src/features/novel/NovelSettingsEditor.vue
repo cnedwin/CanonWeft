@@ -1,6 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onBeforeUnmount,
+  ref,
+  watch,
+} from "vue";
 import { api, APIError, message, newOperationID } from "../../api";
+import type { ResourceNavigationRequest } from "./resourceNavigation";
 import type {
   NovelBook,
   NovelSettingsDraft,
@@ -8,17 +16,21 @@ import type {
   NovelSettingsVersion,
 } from "./types";
 
-const props = defineProps<{ book: NovelBook }>();
+const props = defineProps<{ book: NovelBook; novelNavigation?: boolean }>();
 const emit = defineEmits<{
   close: [];
   updated: [book: NovelBook];
   expired: [];
+  editResource: [request: ResourceNavigationRequest];
 }>();
 const root = `/novels/${props.book.id}/settings`;
 const draft = ref<NovelSettingsDraft | null>(null);
 const versions = ref<NovelSettingsVersion[]>([]);
 const models = ref<{ id: string; name: string; model: string }[]>([]);
 const preview = ref<NovelSettingsPreview | null>(null);
+const previewNeedsRefresh = ref(false);
+const settingsElement = ref<HTMLElement | null>(null);
+const focusedResource = ref("");
 const saved = ref("");
 const saving = ref(false);
 const action = ref(false);
@@ -29,6 +41,7 @@ const error = ref("");
 const fields = ref<Record<string, string>>({});
 const operation = ref(newOperationID());
 let alive = true;
+let navigationEpoch = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 const content = computed(() =>
   draft.value
@@ -42,6 +55,51 @@ const dirty = computed(() => content.value !== saved.value);
 const stale = computed(
   () => !!draft.value && draft.value.base_revision !== currentRevision.value,
 );
+function openResource(item: NovelSettingsPreview["review_resources"][number]) {
+  if (
+    !props.novelNavigation ||
+    dirty.value ||
+    saving.value ||
+    action.value ||
+    !preview.value?.review_resources.some((resource) => resource.id === item.id)
+  )
+    return;
+  focusedResource.value = `settings:${item.id}`;
+  emit("editResource", {
+    ref: {
+      kind: "resource",
+      branch_id: props.book.branch_id,
+      id: item.id,
+      revision: item.head,
+      hash: "",
+    },
+    title: item.name,
+    explanation:
+      "设置修改差异将此资料列为待复核范围；请结合当前版本人工检查，原差异不代表已核对新稿。",
+    focus_key: focusedResource.value,
+  });
+}
+async function afterNovelEdit() {
+  if (!alive) return;
+  ++navigationEpoch;
+  previewNeedsRefresh.value = true;
+  consent.value = false;
+  await nextTick();
+  if (!alive) return;
+  const element = Array.from(
+    settingsElement.value?.querySelectorAll<HTMLButtonElement>(
+      "[data-novel-focus]",
+    ) ?? [],
+  ).find((button) => button.dataset.novelFocus === focusedResource.value);
+  element?.scrollIntoView({ block: "center" });
+  element?.focus();
+}
+function canOpenNovelResource(): boolean {
+  return (
+    alive && !!preview.value && !action.value && !saving.value && !dirty.value
+  );
+}
+defineExpose({ afterNovelEdit, canOpenNovelResource });
 const textFields = [
   ["title", "书名"],
   ["genre", "题材"],
@@ -127,11 +185,17 @@ async function review() {
   action.value = true;
   clearTimeout(timer);
   const reviewed = content.value;
+  const navigation = navigationEpoch;
   try {
     if (!(await save()) || !alive || content.value !== reviewed) return;
-    preview.value = await api<NovelSettingsPreview>(`${root}/preview`, "POST", {
+    const value = await api<NovelSettingsPreview>(`${root}/preview`, "POST", {
       draft_revision: draft.value.revision,
     });
+    if (!alive || content.value !== reviewed || navigation !== navigationEpoch)
+      return;
+    preview.value = value;
+    previewNeedsRefresh.value = false;
+    consent.value = false;
   } catch (cause) {
     if (alive) failure(cause);
   } finally {
@@ -144,7 +208,8 @@ async function confirm() {
     !consent.value ||
     action.value ||
     saving.value ||
-    dirty.value
+    dirty.value ||
+    previewNeedsRefresh.value
   )
     return;
   action.value = true;
@@ -235,7 +300,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="settings-editor">
+  <section ref="settingsElement" class="settings-editor">
     <header>
       <div>
         <h1>修改小说设置</h1>
@@ -346,6 +411,9 @@ onBeforeUnmount(() => {
       </form>
       <section v-if="preview" class="panel" aria-label="设置修改差异">
         <h2>确认修改范围</h2>
+        <p v-if="previewNeedsRefresh" role="status">
+          已从资料修订返回，原差异与待复核范围需要重新检查。设置输入和原清单仍保留，请明确点击“查看修改差异”后再确认采用。
+        </p>
         <div
           v-for="change in preview.changes"
           :key="change.field"
@@ -371,6 +439,15 @@ onBeforeUnmount(() => {
           <ul>
             <li v-for="item in preview.review_resources" :key="item.id">
               {{ item.name }} · {{ item.head ? "已发布版本" : "未发布资料" }}
+              <button
+                v-if="novelNavigation"
+                :aria-label="`打开小说资料 ${item.id}`"
+                :data-novel-focus="`settings:${item.id}`"
+                :disabled="dirty || saving || action"
+                @click="openResource(item)"
+              >
+                打开资料修订
+              </button>
             </li>
           </ul></template
         >
@@ -378,10 +455,12 @@ onBeforeUnmount(() => {
           ><input
             v-model="consent"
             type="checkbox"
-            :disabled="action"
+            :disabled="action || previewNeedsRefresh"
           />我已查看差异，确认采用这些设置</label
         ><button
-          :disabled="!consent || action || saving || dirty"
+          :disabled="
+            !consent || action || saving || dirty || previewNeedsRefresh
+          "
           @click="confirm"
         >
           确认保存新版本

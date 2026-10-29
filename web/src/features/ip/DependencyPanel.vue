@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   newOperationID,
   api,
@@ -11,6 +11,8 @@ import {
 import type { Branch, Candidate } from "./types";
 import ChangeScopePanel from "./ChangeScopePanel.vue";
 import ChangeInspectionPanel from "./ChangeInspectionPanel.vue";
+import type { ResourceNavigationRequest } from "../novel/resourceNavigation";
+import { useBoundedReads } from "../../composables/useBoundedReads";
 import { describePolicy } from "./knowledgePolicy";
 import {
   dependencyNames,
@@ -70,14 +72,21 @@ const props = defineProps<{
     };
   }[];
   blocked: boolean;
+  novelNavigation?: boolean;
 }>();
 const emit = defineEmits<{
   use: [{ id: string; branch: string }];
   prepared: [string];
   blocking: [boolean];
   expired: [];
+  editResource: [request: ResourceNavigationRequest];
 }>();
 const root = `/projects/${props.project.id}`;
+const novelReads = useBoundedReads({
+  stopped: "返回影响清单的重查已停止，原输入保持原样。",
+  timeout: "返回影响清单的重查超时，原输入保持原样，可以重试。",
+});
+let novelReadSequence = 0;
 const catalog = ref<DependencyEntry[]>([]);
 const resourceID = ref("");
 const editing = ref<Resource | null>(null);
@@ -128,6 +137,11 @@ watch(
 );
 const planID = ref("");
 const panel = ref<HTMLDetailsElement | null>(null);
+const inspectionPanel = ref<InstanceType<typeof ChangeInspectionPanel> | null>(
+  null,
+);
+let outcomePages = 0;
+let disposed = false;
 const busy = ref(false);
 const scopeEditBlocking = ref(false);
 const inspectionBlocking = ref(false);
@@ -210,6 +224,40 @@ function title(r: DependencyRef) {
   return found
     ? `${found.branch_name} / ${found.name}`
     : `${r.kind} · ${r.id.slice(0, 12)}`;
+}
+function novelFocus(section: string, value: DependencyRef) {
+  return `change:${plan.value?.id ?? ""}:${section}:${key(value)}`;
+}
+function novelResource(value: DependencyRef) {
+  return (
+    props.novelNavigation &&
+    canEdit.value &&
+    value.kind === "resource" &&
+    value.branch_id === props.branch.id
+  );
+}
+function editNovelResource(request: ResourceNavigationRequest) {
+  if (
+    !novelResource(request.ref) ||
+    !plan.value ||
+    unavailable.value ||
+    dirty.value ||
+    scopeBlocking.value
+  )
+    return;
+  emit("editResource", request);
+}
+function openNovelResource(
+  value: DependencyRef,
+  section: string,
+  explanation: string,
+) {
+  editNovelResource({
+    ref: { ...value },
+    title: title(value),
+    explanation,
+    focus_key: novelFocus(section, value),
+  });
 }
 function readableField(name: string, value: string): string {
   if (name === "locked")
@@ -415,6 +463,88 @@ async function readOutcomes(more = false) {
           ).values(),
         ],
       };
+    outcomePages = more ? outcomePages + 1 : 1;
+  });
+}
+async function afterNovelEdit() {
+  await nextTick();
+  if (
+    !props.novelNavigation ||
+    disposed ||
+    unavailable.value ||
+    dirty.value ||
+    scopeBlocking.value
+  )
+    return;
+  const id = plan.value?.id;
+  const reloadOutcomes = !!outcomes.value;
+  const sequence = ++novelReadSequence;
+  const projectID = props.project.id,
+    branchID = props.branch.id,
+    actorID = props.actor.id;
+  const active = () =>
+    !disposed &&
+    novelReads.active() &&
+    sequence === novelReadSequence &&
+    props.project.id === projectID &&
+    props.branch.id === branchID &&
+    props.actor.id === actorID &&
+    plan.value?.id === id;
+  await inspectionPanel.value?.afterNovelEdit();
+  await nextTick();
+  if (!active()) return;
+  await run(async () => {
+    try {
+      const [nextCatalog, nextPlan] = await Promise.all([
+        novelReads.read<{ items: DependencyEntry[] }>(
+          `${root}/dependencies/catalog`,
+        ),
+        id
+          ? novelReads.read<Plan>(`${root}/changes/${id}`)
+          : Promise.resolve(null),
+      ]);
+      if (!active()) return;
+      let nextOutcomes: typeof outcomes.value = null;
+      if (id && reloadOutcomes) {
+        const items = new Map<
+          string,
+          NonNullable<typeof outcomes.value>["items"][number]
+        >();
+        let cursor = "";
+        for (let page = 0; page < Math.max(1, outcomePages); page++) {
+          const result = await novelReads.read<
+            NonNullable<typeof outcomes.value>
+          >(
+            `${root}/changes/${id}/outcomes${cursor ? `?after=${encodeURIComponent(cursor)}` : ""}`,
+          );
+          if (!active()) return;
+          for (const item of result.items)
+            items.set(item.release_id + ":" + item.resource_id, item);
+          nextOutcomes = {
+            ...result,
+            items: [...items.values()],
+          };
+          if (!result.next) break;
+          cursor = result.next;
+        }
+      }
+      if (!active()) return;
+      catalog.value = nextCatalog.items;
+      if (nextPlan) plan.value = nextPlan;
+      if (reloadOutcomes) outcomes.value = nextOutcomes;
+      notice.value =
+        "已重读原清单与已查看的处理记录；未重新生成清单、准备审查或确认处理。";
+    } catch (e) {
+      if (!active()) return;
+      if (e instanceof APIError && [401, 403].includes(e.status)) {
+        plan.value = null;
+        outcomes.value = null;
+        catalog.value = [];
+        history.value = [];
+        editing.value = null;
+      }
+      throw e;
+    }
   });
 }
 async function reloadHistory() {
@@ -442,7 +572,7 @@ async function previewCandidate(id: string) {
   await analyze("ip");
   panel.value?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
-defineExpose({ previewCandidate });
+defineExpose({ previewCandidate, afterNovelEdit });
 function usePlan(branchID: string) {
   if (!plan.value || unavailable.value || dirty.value || scopeBlocking.value)
     return;
@@ -474,6 +604,7 @@ onMounted(() => {
     });
 });
 onUnmounted(() => {
+  disposed = true;
   window.removeEventListener("beforeunload", unload);
   emit("blocking", false);
 });
@@ -810,8 +941,19 @@ onUnmounted(() => {
       />
       <p v-for="choice in plan.additional_review ?? []" :key="key(choice.node)">
         作者补充检查 · {{ title(choice.node) }}：{{ choice.reason }}
+        <button
+          v-if="novelResource(choice.node)"
+          type="button"
+          :aria-label="`打开小说资料 ${choice.node.id}`"
+          :data-novel-focus="novelFocus('additional', choice.node)"
+          :disabled="unavailable || dirty || scopeBlocking"
+          @click="openNovelResource(choice.node, 'additional', choice.reason)"
+        >
+          打开对应小说内容
+        </button>
       </p>
       <ChangeInspectionPanel
+        ref="inspectionPanel"
         :key="`inspection-${plan.id}`"
         :project="project"
         :actor="actor"
@@ -821,6 +963,8 @@ onUnmounted(() => {
         :catalog="catalog"
         :stale="plan.stale || plan.source_state === 'SUPERSEDED'"
         :blocked="unavailable || dirty || scopeEditBlocking"
+        :novel-navigation="novelNavigation"
+        @edit-resource="editNovelResource"
         @blocking="inspectionBlocking = $event"
         @expired="emit('expired')"
       />
@@ -846,6 +990,22 @@ onUnmounted(() => {
       >
         <h4>{{ title(item.node) }} · {{ labels[item.action] }}</h4>
         <button
+          v-if="novelResource(item.node)"
+          type="button"
+          :aria-label="`打开小说资料 ${item.node.id}`"
+          :data-novel-focus="novelFocus('impact', item.node)"
+          :disabled="unavailable || dirty || scopeBlocking"
+          @click="
+            openNovelResource(
+              item.node,
+              'impact',
+              `原影响清单：${labels[item.action] || item.action}。${item.via.map((via) => via.reason).join('；')}`,
+            )
+          "
+        >
+          打开对应小说内容
+        </button>
+        <button
           v-if="
             canEdit &&
             plan.source_event_id &&
@@ -870,7 +1030,25 @@ onUnmounted(() => {
       </article>
       <details>
         <summary>缺少依赖记录：{{ plan.untracked.length }} 项</summary>
-        <p v-for="r in plan.untracked" :key="key(r)">{{ title(r) }}</p>
+        <p v-for="r in plan.untracked" :key="key(r)">
+          {{ title(r) }}
+          <button
+            v-if="novelResource(r)"
+            type="button"
+            :aria-label="`打开小说资料 ${r.id}`"
+            :data-novel-focus="novelFocus('untracked', r)"
+            :disabled="unavailable || dirty || scopeBlocking"
+            @click="
+              openNovelResource(
+                r,
+                'untracked',
+                '原清单中该资料尚无依赖记录，请核对当前内容。',
+              )
+            "
+          >
+            打开对应小说内容
+          </button>
+        </p>
       </details>
       <details>
         <summary>
@@ -878,6 +1056,22 @@ onUnmounted(() => {
         </summary>
         <p v-for="r in plan.outside_recorded_closure" :key="key(r)">
           {{ title(r) }}
+          <button
+            v-if="novelResource(r)"
+            type="button"
+            :aria-label="`打开小说资料 ${r.id}`"
+            :data-novel-focus="novelFocus('outside', r)"
+            :disabled="unavailable || dirty || scopeBlocking"
+            @click="
+              openNovelResource(
+                r,
+                'outside',
+                '该资料未进入原记录的传播范围，请人工核对是否受影响。',
+              )
+            "
+          >
+            打开对应小说内容
+          </button>
         </p>
       </details>
     </div>

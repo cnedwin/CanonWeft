@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   newOperationID,
   api,
@@ -9,6 +9,8 @@ import {
   type Project,
 } from "../../api";
 import type { Branch, Candidate } from "./types";
+import type { ResourceNavigationRequest } from "../novel/resourceNavigation";
+import { useBoundedReads } from "../../composables/useBoundedReads";
 import ImportPanel from "./ImportPanel.vue";
 import SourcePolicyEditor from "./SourcePolicyEditor.vue";
 import DependencyPanel from "./DependencyPanel.vue";
@@ -25,7 +27,7 @@ const dependencyPanel = ref<InstanceType<typeof DependencyPanel> | null>(null);
 async function previewCandidateImpact(id: string) {
   await dependencyPanel.value?.previewCandidate(id);
 }
-defineExpose({ previewCandidateImpact, refreshAfterPrepared });
+defineExpose({ previewCandidateImpact, refreshAfterPrepared, afterNovelEdit });
 import ReleaseSourcePicker from "./ReleaseSourcePicker.vue";
 import ReleaseOriginSummary from "./ReleaseOriginSummary.vue";
 import SemanticReviewPanel from "./SemanticReviewPanel.vue";
@@ -114,14 +116,21 @@ const props = defineProps<{
   candidates: Candidate[];
   blocked: boolean;
   initiallyOpenImports?: boolean;
+  novelNavigation?: boolean;
 }>();
 const emit = defineEmits<{
   published: [];
   blocking: [boolean];
   expired: [];
   changePlan: [{ id: string; branch: string }];
+  editResource: [request: ResourceNavigationRequest];
 }>();
 const root = `/projects/${props.project.id}`;
+const novelReads = useBoundedReads({
+  stopped: "返回共享资料的重查已停止，原输入保持原样。",
+  timeout: "返回共享资料的重查超时，原输入保持原样，可以重试。",
+});
+let novelReadSequence = 0;
 const resources = ref<Resource[]>([]);
 const releases = ref<Release[]>([]);
 const usableReleases = computed(() =>
@@ -250,6 +259,65 @@ async function refreshAfterPrepared() {
   } finally {
     if (!disposed) busy.value = false;
   }
+}
+function editNovelResource(request: ResourceNavigationRequest) {
+  if (
+    !props.novelNavigation ||
+    !canEdit.value ||
+    unavailable.value ||
+    pending.value ||
+    request.ref.kind !== "resource" ||
+    request.ref.branch_id !== props.branch.id
+  )
+    return;
+  emit("editResource", request);
+}
+async function afterNovelEdit() {
+  await nextTick();
+  if (!props.novelNavigation || disposed || unavailable.value || pending.value)
+    return;
+  const sequence = ++novelReadSequence;
+  const projectID = props.project.id,
+    branchID = props.branch.id,
+    actorID = props.actor.id;
+  const active = () =>
+    !disposed &&
+    novelReads.active() &&
+    sequence === novelReadSequence &&
+    props.project.id === projectID &&
+    props.branch.id === branchID &&
+    props.actor.id === actorID;
+  await dependencyPanel.value?.afterNovelEdit();
+  await nextTick();
+  if (!active()) return;
+  await perform(async () => {
+    try {
+      const [nextResources, nextReleases] = await Promise.all([
+        novelReads.read<{ items: Resource[] }>(
+          `${root}/resources?branch=${branchID}`,
+        ),
+        novelReads.read<{ items: Release[] }>(
+          `${root}/releases?branch=${branchID}`,
+        ),
+      ]);
+      if (!active()) return;
+      resources.value = nextResources.items;
+      releases.value = nextReleases.items;
+      notice.value = "已重读共享资料列表；未重新生成候选或确认采用。";
+    } catch (e) {
+      if (!active()) return;
+      if (e instanceof APIError && [401, 403].includes(e.status)) {
+        resources.value = [];
+        releases.value = [];
+        edits.value = [];
+        preview.value = null;
+        publishedText.value = {};
+        publishedPolicies.value = {};
+        publishedDependencies.value = {};
+      }
+      throw e;
+    }
+  });
 }
 async function perform(work: () => Promise<void>) {
   if (unavailable.value) return;
@@ -684,6 +752,7 @@ onUnmounted(() => {
       :resources="resources"
       :releases="usableReleases"
       :candidates="candidates"
+      :novel-navigation="novelNavigation"
       :blocked="
         busy ||
         saving ||
@@ -697,6 +766,7 @@ onUnmounted(() => {
       "
       @prepared="refreshAfterPrepared"
       @use="emit('changePlan', $event)"
+      @edit-resource="editNovelResource"
       @blocking="dependencyBlocking = $event"
       @expired="emit('expired')"
     />

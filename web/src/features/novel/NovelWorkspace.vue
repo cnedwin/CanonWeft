@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { api, APIError, message, type Actor, type Project } from "../../api";
 import type { NovelBook } from "./types";
 import type { PlanningOverview } from "./planningTypes";
@@ -25,6 +32,12 @@ import {
   type ProseSearchView,
 } from "./proseSearchReads";
 import type { ProseSearchEditTarget } from "./proseSearchTypes";
+import { useBoundedReads } from "../../composables/useBoundedReads";
+import {
+  resolveNovelResource,
+  type ResourceNavigationRequest,
+  type NovelResourceTarget,
+} from "./resourceNavigation";
 import {
   initialStoryLedgerView,
   type StoryLedgerView,
@@ -95,6 +108,38 @@ const loadingChapters = ref(false);
 const chapterError = ref("");
 const chapterEditor = ref<InstanceType<typeof NovelChapterEditor> | null>(null);
 const initialChapterAction = ref<"write" | "refine" | undefined>();
+const ipEditor = ref<InstanceType<typeof IPPage> | null>(null);
+const settingsEditor = ref<InstanceType<typeof NovelSettingsEditor> | null>(
+  null,
+);
+const navigationLoading = ref(false),
+  navigationError = ref(""),
+  navigationNotice = ref("");
+type ResourceOrigin = "ip" | "settings";
+const changeSession = ref<{
+  origin: ResourceOrigin;
+  request: ResourceNavigationRequest;
+  target: NovelResourceTarget;
+  scroll: number;
+} | null>(null);
+const resourceTarget = ref<Extract<
+  NovelResourceTarget,
+  { kind: "chapter" }
+> | null>(null);
+const navigationRetry = ref<{
+  origin: ResourceOrigin;
+  request: ResourceNavigationRequest;
+} | null>(null);
+const navigationReads = useBoundedReads({
+  stopped: "资料定位已停止。",
+  timeout: "资料定位读取超时，原清单与输入已保留，可以重试。",
+});
+let navigationSequence = 0;
+const changeReturnLabel = computed(() =>
+  changeSession.value?.origin === "settings"
+    ? "保存并返回设置差异"
+    : "保存并返回变更清单",
+);
 const onHome = computed(
   () =>
     !sourceReview.value &&
@@ -184,6 +229,13 @@ function chooseChapter(id: string) {
   ++chapterRequest;
 }
 function closeChapter() {
+  if (changeSession.value) {
+    chapterId.value = "";
+    initialChapterAction.value = undefined;
+    resourceTarget.value = null;
+    void returnFromResource();
+    return;
+  }
   chapterId.value = "";
   initialChapterAction.value = undefined;
   reviewing.value = returnToBookReview.value;
@@ -247,6 +299,12 @@ function openReviewChapter(id: string) {
   openCatalogChapter(id);
 }
 function closePlanning() {
+  if (changeSession.value) {
+    planning.value = false;
+    planningResourceId.value = "";
+    void returnFromResource();
+    return;
+  }
   planning.value = false;
   planningResourceId.value = "";
   if (returnToReview.value) {
@@ -260,13 +318,113 @@ function openCatalogChapter(id: string) {
   choosingChapter.value = null;
   ++chapterRequest;
 }
+async function openResource(
+  request: ResourceNavigationRequest,
+  origin: ResourceOrigin,
+) {
+  if (
+    navigationLoading.value ||
+    changeSession.value ||
+    !canEdit.value ||
+    (origin === "ip" ? !editing.value : !settings.value)
+  )
+    return;
+  const sequence = ++navigationSequence;
+  const scope = {
+    project_id: book.value.project_id,
+    branch_id: book.value.branch_id,
+  };
+  const scroll = window.scrollY;
+  navigationLoading.value = true;
+  navigationError.value = "";
+  navigationNotice.value = "";
+  navigationRetry.value = { origin, request };
+  try {
+    const value = await navigationReads.read<unknown>(
+      `/projects/${encodeURIComponent(scope.project_id)}/resources?branch=${encodeURIComponent(scope.branch_id)}`,
+    );
+    if (
+      !navigationReads.active() ||
+      sequence !== navigationSequence ||
+      (origin === "ip" ? !editing.value : !settings.value)
+    )
+      return;
+    const sourceReady =
+      origin === "ip"
+        ? ipEditor.value?.canOpenNovelResource()
+        : settingsEditor.value?.canOpenNovelResource();
+    if (!canEdit.value || !sourceReady) {
+      navigationError.value =
+        "原页面有未保存修改或操作正在进行，请先完成后再打开资料。输入已保留。";
+      return;
+    }
+    const target = resolveNovelResource(value, scope, request.ref);
+    changeSession.value = { origin, request, target, scroll };
+    editing.value = false;
+    settings.value = false;
+    bookReviewTarget.value = null;
+    storyLedgerTarget.value = null;
+    proseSearchTarget.value = null;
+    returnToReview.value = false;
+    returnToBookReview.value = false;
+    returnToStoryLedger.value = false;
+    returnToProseSearch.value = false;
+    navigationRetry.value = null;
+    if (target.kind === "planning") {
+      planningResourceId.value = target.resource_id;
+      planning.value = true;
+    } else {
+      resourceTarget.value = target;
+      openCatalogChapter(target.chapter_id);
+    }
+  } catch (cause) {
+    if (!navigationReads.active() || sequence !== navigationSequence) return;
+    navigationError.value = message(cause);
+    if (cause instanceof APIError && cause.status === 401) emit("expired");
+  } finally {
+    if (sequence === navigationSequence) navigationLoading.value = false;
+  }
+}
+async function returnFromResource() {
+  const session = changeSession.value;
+  if (!session) return;
+  editing.value = session.origin === "ip";
+  settings.value = session.origin === "settings";
+  navigationLoading.value = false;
+  await nextTick();
+  try {
+    if (session.origin === "ip") await ipEditor.value?.afterNovelEdit();
+    else await settingsEditor.value?.afterNovelEdit();
+    navigationNotice.value =
+      "已返回原清单。私人修改不等于正式采用或独立审查通过；原报告和处理记录保留，仍需核对当前版本。";
+  } catch (cause) {
+    navigationError.value = message(cause);
+    if (cause instanceof APIError && cause.status === 401) emit("expired");
+  } finally {
+    changeSession.value = null;
+    await nextTick();
+    const button = document.querySelector<HTMLElement>(
+      `[data-novel-focus="${CSS.escape(session.request.focus_key)}"]`,
+    );
+    button?.focus({ preventScroll: true });
+    window.scrollTo({ top: session.scroll });
+  }
+}
 onMounted(loadStage);
 watch(onHome, (home, previous) => {
-  if (home && !previous) void loadStage();
+  if (home && !previous) {
+    ++navigationSequence;
+    navigationLoading.value = false;
+    navigationRetry.value = null;
+    navigationError.value = "";
+    navigationNotice.value = "";
+    void loadStage();
+  }
 });
 onBeforeUnmount(() => {
   disposed = true;
   ++chapterRequest;
+  ++navigationSequence;
 });
 </script>
 
@@ -277,6 +435,66 @@ onBeforeUnmount(() => {
       :tool-active="!onHome && !chapterId"
       :disabled="!canEdit || (!onHome && !chapterId)"
       @intent="routeIntent"
+    />
+    <section
+      v-if="navigationLoading || navigationError || navigationNotice"
+      class="panel"
+      aria-label="修订导航"
+    >
+      <p v-if="navigationLoading">正在核对现有资料与小说章节…</p>
+      <p v-if="navigationError" role="alert">{{ navigationError }}</p>
+      <p v-if="navigationNotice" role="status">{{ navigationNotice }}</p>
+      <button
+        v-if="navigationRetry && navigationError"
+        :disabled="navigationLoading"
+        @click="openResource(navigationRetry.request, navigationRetry.origin)"
+      >
+        重试打开资料
+      </button>
+    </section>
+    <section
+      v-if="changeSession && (chapterId || planning)"
+      class="panel"
+      aria-label="本次修订任务"
+    >
+      <h2>{{ changeSession.request.title }}</h2>
+      <p>{{ changeSession.request.explanation }}</p>
+      <p
+        v-if="
+          changeSession.target.source_revision !==
+          changeSession.target.current_head
+        "
+      >
+        原清单引用的正式版本已变化，请核对当前资料；不能把依赖组合摘要当作当前正文摘要。
+      </p>
+      <p>
+        此处打开当前作者已保存稿或已有正式稿。原问题不是新稿审查结果；修改后返回原清单复核，不会自动采用、改写记忆或启动模型。
+      </p>
+    </section>
+    <NovelSettingsEditor
+      v-if="settings || changeSession?.origin === 'settings'"
+      v-show="settings"
+      ref="settingsEditor"
+      :book="book"
+      :novel-navigation="canEdit && !navigationLoading"
+      @edit-resource="openResource($event, 'settings')"
+      @close="settings = false"
+      @updated="updated"
+      @expired="emit('expired')"
+    />
+    <IPPage
+      v-if="editing || changeSession?.origin === 'ip'"
+      v-show="editing"
+      ref="ipEditor"
+      :project="project"
+      :actor="actor"
+      :initial-branch-id="book.branch_id"
+      :focus-characters="focusCharacters"
+      :novel-navigation="canEdit"
+      :novel-navigation-busy="navigationLoading"
+      @edit-resource="openResource($event, 'ip')"
+      @close="editing = false"
+      @expired="emit('expired')"
     />
     <NovelProseSearch
       v-if="proseSearch"
@@ -351,16 +569,19 @@ onBeforeUnmount(() => {
       :review-target="bookReviewTarget"
       :story-target="storyLedgerTarget"
       :search-target="proseSearchTarget"
+      :resource-target="resourceTarget"
       :return-label="
-        returnToProseSearch
-          ? '保存并返回正文查找'
-          : returnToStoryLedger
-            ? '保存并返回剧情账本'
-            : returnToBookReview
-              ? '保存并返回审稿报告'
-              : returnToReview
-                ? '保存并返回待复核清单'
-                : undefined
+        changeSession
+          ? changeReturnLabel
+          : returnToProseSearch
+            ? '保存并返回正文查找'
+            : returnToStoryLedger
+              ? '保存并返回剧情账本'
+              : returnToBookReview
+                ? '保存并返回审稿报告'
+                : returnToReview
+                  ? '保存并返回待复核清单'
+                  : undefined
       "
       ref="chapterEditor"
       @close="closeChapter"
@@ -414,7 +635,13 @@ onBeforeUnmount(() => {
     <NovelPlanning
       v-else-if="planning"
       :initial-resource-id="planningResourceId"
-      :return-label="returnToReview ? '保存并返回待复核清单' : undefined"
+      :return-label="
+        changeSession
+          ? changeReturnLabel
+          : returnToReview
+            ? '保存并返回待复核清单'
+            : undefined
+      "
       :book="book"
       :project="project"
       :actor="actor"
@@ -430,23 +657,7 @@ onBeforeUnmount(() => {
       @close="materials = false"
       @expired="emit('expired')"
     />
-    <NovelSettingsEditor
-      v-else-if="settings"
-      :book="book"
-      @close="settings = false"
-      @updated="updated"
-      @expired="emit('expired')"
-    />
-    <IPPage
-      v-else-if="editing"
-      :project="project"
-      :actor="actor"
-      :initial-branch-id="book.branch_id"
-      :focus-characters="focusCharacters"
-      @close="editing = false"
-      @expired="emit('expired')"
-    />
-    <section v-else class="novel-workspace">
+    <section v-else-if="onHome" class="novel-workspace">
       <header class="section-heading">
         <div>
           <p class="eyebrow">小说工作台</p>

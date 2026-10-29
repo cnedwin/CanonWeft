@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   api,
   APIError,
@@ -11,6 +11,8 @@ import {
 import type { DependencyEntry, DependencyRef } from "./dependencies";
 import QualificationPanel from "../skills/QualificationPanel.vue";
 import ModelsPage from "../models/ModelsPage.vue";
+import type { ResourceNavigationRequest } from "../novel/resourceNavigation";
+import { useBoundedReads } from "../../composables/useBoundedReads";
 
 const props = defineProps<{
   project: Project;
@@ -21,8 +23,13 @@ const props = defineProps<{
   catalog: DependencyEntry[];
   stale: boolean;
   blocked: boolean;
+  novelNavigation?: boolean;
 }>();
-const emit = defineEmits<{ expired: []; blocking: [boolean] }>();
+const emit = defineEmits<{
+  expired: [];
+  blocking: [boolean];
+  editResource: [request: ResourceNavigationRequest];
+}>();
 type Binding = {
   id: string;
   enabled: boolean;
@@ -94,6 +101,10 @@ const coverage = ref<Coverage | null>(null);
 const preparingAll = ref(false),
   stopPreparation = ref(false);
 const root = `/projects/${props.project.id}`;
+const novelReads = useBoundedReads({
+  stopped: "返回独立审查的重查已停止，原输入保持原样。",
+  timeout: "返回独立审查的重查超时，原输入保持原样，可以重试。",
+});
 const branchID = ref(props.sourceBranch),
   chosen = ref<string[]>([]),
   bindingID = ref("");
@@ -199,6 +210,124 @@ function name(ref: DependencyRef) {
 function branchName(id: string) {
   return props.catalog.find((c) => c.ref.branch_id === id)?.branch_name || id;
 }
+const navigationBlocked = computed(
+  () =>
+    busy.value ||
+    props.blocked ||
+    setupDirty.value ||
+    chosen.value.length > 0 ||
+    !!pendingInput.value ||
+    preparingAll.value,
+);
+function novelResource(value: DependencyRef) {
+  return (
+    props.novelNavigation &&
+    canEdit.value &&
+    value.kind === "resource" &&
+    value.branch_id === props.sourceBranch
+  );
+}
+function novelFocus(section: string, value: DependencyRef) {
+  return `inspection:${props.planId}:${selected.value?.id ?? ""}:${section}:${value.branch_id}:${value.id}`;
+}
+function issueResource(issue: Issue) {
+  const matches = report.value?.items.filter(
+    (item) =>
+      novelResource(item.ref) && issue.target_key === `resource:${item.ref.id}`,
+  );
+  return matches?.length === 1 ? matches[0].ref : null;
+}
+function issueFocus(issue: Issue, index: number) {
+  const value = issueResource(issue);
+  return value ? novelFocus(`issue-${index}`, value) : "";
+}
+function editIssueResource(issue: Issue, index: number) {
+  const value = issueResource(issue);
+  if (value)
+    editNovelResource(
+      value,
+      `issue-${index}`,
+      `原固定版本的独立审查问题：${issue.explanation}。请核对当前资料；原报告不是修改后重新审查的结果。`,
+    );
+}
+function editNovelResource(
+  value: DependencyRef,
+  section: string,
+  explanation: string,
+) {
+  if (!novelResource(value) || navigationBlocked.value) return;
+  emit("editResource", {
+    ref: { ...value },
+    title: name(value),
+    explanation,
+    focus_key: novelFocus(section, value),
+  });
+}
+async function afterNovelEdit() {
+  await nextTick();
+  if (!props.novelNavigation || disposed || navigationBlocked.value) return;
+  const current = ++epoch,
+    branch = branchID.value,
+    selectedTask = selected.value,
+    selectedID = selectedTask?.id;
+  const projectID = props.project.id,
+    actorID = props.actor.id,
+    planID = props.planId;
+  const active = () =>
+    !disposed &&
+    novelReads.active() &&
+    current === epoch &&
+    props.project.id === projectID &&
+    props.actor.id === actorID &&
+    props.planId === planID &&
+    branchID.value === branch;
+  if (!branch) return;
+  await perform(async () => {
+    try {
+      const [list, nextCoverage, nextReport] = await Promise.all([
+        novelReads.read<{
+          items: Task[];
+          next?: string;
+          runtime_ready: boolean;
+        }>(
+          `${root}/changes/${props.planId}/inspections?branch=${encodeURIComponent(branch)}&after=`,
+        ),
+        novelReads.read<Coverage>(
+          `${root}/changes/${props.planId}/inspection-coverage?branch=${encodeURIComponent(branch)}`,
+        ),
+        selectedID
+          ? novelReads.read<Report>(
+              `${root}/generations/${selectedID}/change-inspection`,
+            )
+          : Promise.resolve(null),
+      ]);
+      if (!active()) return;
+      runs.value = list.items;
+      next.value = list.next || "";
+      runtimeReady.value = list.runtime_ready;
+      coverage.value = nextCoverage;
+      if (nextReport && selectedTask && selected.value?.id === selectedID) {
+        report.value = nextReport;
+        selected.value = { ...selectedTask, state: nextReport.state };
+      }
+      notice.value =
+        "已重读原任务与覆盖记录；这是原固定版本的审查，不代表新稿已重新审查或问题已修复。";
+    } catch (e) {
+      if (!active()) return;
+      if (e instanceof APIError && [401, 403].includes(e.status)) {
+        report.value = null;
+        coverage.value = null;
+        runs.value = [];
+        selected.value = null;
+        bindings.value = [];
+        options.value = [];
+        runtimeReady.value = false;
+      }
+      throw e;
+    }
+  });
+}
+defineExpose({ afterNovelEdit });
 function fail(e: unknown) {
   error.value = message(e);
   if (e instanceof APIError && e.status === 401) emit("expired");
@@ -450,16 +579,12 @@ onUnmounted(() => {
       </p>
       <p>
         清单外 {{ coverage.outside_scope }} 份；尚无依赖记录
-        {{
-          coverage.untracked
-        }}
+        {{ coverage.untracked }}
         份（可能与清单内重叠）。这些计数不是全书无遗漏证明，已检查也不等于问题已修复。
       </p>
       <p v-if="coverage.unreadable_runs" role="status">
         有
-        {{
-          coverage.unreadable_runs
-        }}
+        {{ coverage.unreadable_runs }}
         条任务的范围无法核实或无权读取，自动准备已停用。
       </p>
       <details>
@@ -663,6 +788,22 @@ onUnmounted(() => {
           <strong>{{ item.name }}</strong> ·
           {{ states[item.state] || item.state
           }}<code>{{ item.ref.revision }}</code>
+          <button
+            v-if="novelResource(item.ref)"
+            type="button"
+            :aria-label="`打开小说资料 ${item.ref.id}`"
+            :data-novel-focus="novelFocus('report', item.ref)"
+            :disabled="navigationBlocked"
+            @click="
+              editNovelResource(
+                item.ref,
+                'report',
+                '原独立审查的固定资料，请核对当前内容；打开不代表问题已经修复。',
+              )
+            "
+          >
+            打开对应小说内容
+          </button>
         </article>
         <article
           v-for="(issue, index) in report.report?.issues || []"
@@ -678,6 +819,16 @@ onUnmounted(() => {
             }}
             · {{ issue.explanation }}
           </p>
+          <button
+            v-if="issueResource(issue)"
+            type="button"
+            :aria-label="`打开小说资料 ${issueResource(issue)?.id}`"
+            :data-novel-focus="issueFocus(issue, index)"
+            :disabled="navigationBlocked"
+            @click="editIssueResource(issue, index)"
+          >
+            打开问题对应小说内容
+          </button>
           <details v-for="key in issue.anchor_keys" :key="key">
             <summary>查看依据 {{ key }}</summary>
             <pre>{{ report.anchors?.find((a) => a.key === key)?.text }}</pre>

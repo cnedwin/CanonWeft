@@ -22,6 +22,7 @@ import NovelReviewAnchor from "./NovelReviewAnchor.vue";
 import type { BookReviewEditTarget } from "./bookReviewTypes";
 import type { StoryLedgerEditTarget } from "./storyLedgerTypes";
 import type { ProseSearchEditTarget } from "./proseSearchTypes";
+import type { NovelResourceTarget } from "./resourceNavigation";
 import NovelBasisComparison from "./NovelBasisComparison.vue";
 import NovelChapterOldDraft, {
   type OldDraftTake,
@@ -47,6 +48,7 @@ const props = defineProps<{
   reviewTarget?: BookReviewEditTarget | null;
   storyTarget?: StoryLedgerEditTarget | null;
   searchTarget?: ProseSearchEditTarget | null;
+  resourceTarget?: Extract<NovelResourceTarget, { kind: "chapter" }> | null;
 }>();
 const emit = defineEmits<{ close: []; expired: [] }>();
 const root = `/novels/${props.book.id}/chapters`;
@@ -87,6 +89,11 @@ const activeStoryTarget = computed(() =>
 );
 const activeSearchTarget = computed(() =>
   props.reviewTarget || props.storyTarget ? null : (props.searchTarget ?? null),
+);
+const activeResourceTarget = computed(() =>
+  props.reviewTarget || props.storyTarget || props.searchTarget
+    ? null
+    : (props.resourceTarget ?? null),
 );
 const evidenceTarget = computed(
   () =>
@@ -318,6 +325,21 @@ function fail(e: unknown) {
   if (e instanceof APIError && e.status === 401) emit("expired");
 }
 function install(value: ChapterDraft) {
+  const target = activeResourceTarget.value;
+  if (target) {
+    const resource = value.resource as PlanResource & { branch_id?: string };
+    if (
+      resource.id !== target.control_id ||
+      resource.branch_id !== props.book.branch_id ||
+      resource.kind !== "novel_chapter_control" ||
+      resource.name !== `章节工作稿 · ${target.chapter_id}` ||
+      value.document.chapter_id !== target.chapter_id ||
+      (target.resource_kind === "body" &&
+        value.document.body_id !== target.resource_id) ||
+      (target.resource_kind === "control" && resource.id !== target.resource_id)
+    )
+      throw new Error("来源资源与当前小说章节不一致，请返回原清单重新读取。");
+  }
   saved.value = JSON.stringify(value.document);
   draft.value = value;
 }
@@ -330,7 +352,10 @@ async function save(): Promise<void> {
   }
   if (
     !dirty.value &&
-    (draft.value.revision > 0 || props.storyTarget || props.searchTarget)
+    (draft.value.revision > 0 ||
+      props.storyTarget ||
+      props.searchTarget ||
+      activeResourceTarget.value)
   )
     return;
   clearTimeout(timer);
@@ -496,7 +521,10 @@ async function openLedger() {
     invalidateBasis("已切换到账本核对，请返回后重新读取依据对照。");
   await perform(async () => {
     const target = activeStoryTarget.value;
-    if (!target || dirty.value || saving.value) await save();
+    const resourceTarget = activeResourceTarget.value;
+    const existingLedger = resourceTarget?.resource_kind === "ledger";
+    if ((!target && !existingLedger) || dirty.value || saving.value)
+      await save();
     if (disposed || dirty.value || !draft.value) return;
     const value = await api<ChapterDraft>(
       `${root}/${draft.value.resource.id}/draft`,
@@ -511,7 +539,11 @@ async function openLedger() {
     )
       throw new Error("账本来源与当前章节资源不一致，请返回剧情账本重新读取。");
     install(value);
-    if (!target && (!value.ready || !value.document.text.trim()))
+    if (
+      !target &&
+      !existingLedger &&
+      (!value.ready || !value.document.text.trim())
+    )
       throw new Error(value.reason || "请先写入本章正文。");
     branch.value = await api<Branch>(
       `/projects/${props.project.id}/branches/${props.book.branch_id}`,
@@ -751,13 +783,23 @@ function unload(e: BeforeUnloadEvent) {
 onMounted(async () => {
   window.addEventListener("beforeunload", unload);
   await perform(async () => {
-    const target = activeStoryTarget.value ?? activeSearchTarget.value;
+    const target =
+      activeStoryTarget.value ??
+      activeSearchTarget.value ??
+      activeResourceTarget.value;
     if (target && (!target.control_id || target.chapter_id !== props.chapterId))
       throw new Error(
         activeSearchTarget.value
           ? "正文查找来源缺少已有章节资源，不能打开正文；请返回正文查找重新读取。"
           : "账本来源缺少已有章节资源，不能打开正文；请返回剧情账本重新读取。",
       );
+    const resourceTarget = activeResourceTarget.value;
+    if (
+      resourceTarget?.resource_kind === "ledger" &&
+      (!resourceTarget.ledger_id ||
+        resourceTarget.ledger_id !== resourceTarget.resource_id)
+    )
+      throw new Error("来源缺少准确的已有账本资源，请返回原清单重新读取。");
     const resource = target
       ? { id: target.control_id }
       : await api<PlanResource>(root, "POST", {
@@ -780,6 +822,11 @@ onMounted(async () => {
             ? "正文查找来源与当前章节资源不一致，请返回正文查找重新读取。"
             : "账本来源与当前章节资源不一致，请返回剧情账本重新读取。",
         );
+      if (
+        activeResourceTarget.value &&
+        currentBranch.id !== props.book.branch_id
+      )
+        throw new Error("当前分支与来源小说不一致，请返回原清单重新读取。");
       install(value);
       branch.value = currentBranch;
       if (props.initialAction === "refine")
@@ -791,7 +838,8 @@ onMounted(async () => {
   });
   if (
     !disposed &&
-    activeStoryTarget.value?.open_ledger &&
+    (activeStoryTarget.value?.open_ledger ||
+      activeResourceTarget.value?.resource_kind === "ledger") &&
     draft.value &&
     branch.value
   )
@@ -993,11 +1041,25 @@ onBeforeUnmount(() => {
         :project="project"
         :actor="actor"
         :branch="branch"
-        :existing-ledger-id="activeStoryTarget?.ledger_id"
+        :existing-ledger-id="
+          activeStoryTarget?.ledger_id ??
+          (activeResourceTarget?.resource_kind === 'ledger'
+            ? activeResourceTarget.ledger_id
+            : undefined)
+        "
+        :expected-control-id="
+          activeResourceTarget?.resource_kind === 'ledger'
+            ? activeResourceTarget.control_id
+            : undefined
+        "
         :focus-entry-id="activeStoryTarget?.entry_id"
         :expected-ledger-hash="activeStoryTarget?.ledger_hash"
         :source-return-label="
-          activeStoryTarget ? '保存账本并返回剧情账本' : undefined
+          activeStoryTarget
+            ? '保存账本并返回剧情账本'
+            : activeResourceTarget?.resource_kind === 'ledger'
+              ? '保存账本并返回修订清单'
+              : undefined
         "
         @close="ledgerOpen = false"
         @source-return="returnToStoryLedger"

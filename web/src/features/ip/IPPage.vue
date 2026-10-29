@@ -31,18 +31,31 @@ import IndexJobsPanel from "./IndexJobsPanel.vue";
 import BranchDeltaPanel from "./BranchDeltaPanel.vue";
 import SemanticReviewPanel from "./SemanticReviewPanel.vue";
 import { activeReasons, type BranchDelta } from "./branchDelta";
+import type { ResourceNavigationRequest } from "../novel/resourceNavigation";
+import { useBoundedReads } from "../../composables/useBoundedReads";
 
 const props = defineProps<{
   project: Project;
   actor: Actor;
   initialBranchId?: string;
   focusCharacters?: boolean;
+  novelNavigation?: boolean;
+  novelNavigationBusy?: boolean;
 }>();
 const characterLibrary = ref<InstanceType<typeof CharacterLibrary> | null>(
   null,
 );
-const emit = defineEmits<{ close: []; expired: [] }>();
+const emit = defineEmits<{
+  close: [];
+  expired: [];
+  editResource: [request: ResourceNavigationRequest];
+}>();
 const root = `/projects/${props.project.id}/branches`;
+const novelReads = useBoundedReads({
+  stopped: "返回分支的重查已停止，原输入保持原样。",
+  timeout: "返回分支的重查超时，原输入保持原样，可以重试。",
+});
+let novelReadSequence = 0;
 const branches = ref<Branch[]>([]);
 const current = ref<Branch | null>(null);
 const candidates = ref<Candidate[]>([]);
@@ -98,7 +111,7 @@ const promotionBlocking = ref(false);
 const generationBlocking = ref(false);
 const memoryBlocking = ref(false);
 const characterBlocking = ref(false);
-const leaveBlocked = computed(
+const ownLeaveBlocked = computed(
   () =>
     busy.value ||
     savingDraft.value ||
@@ -109,6 +122,9 @@ const leaveBlocked = computed(
     generationBlocking.value ||
     memoryBlocking.value ||
     characterBlocking.value,
+);
+const leaveBlocked = computed(
+  () => ownLeaveBlocked.value || !!props.novelNavigationBusy,
 );
 const mergeView = ref<MergeView | null>(null);
 const choices = ref<Record<string, string>>({});
@@ -286,6 +302,79 @@ async function useChangePlan(value: { id: string; branch: string }) {
     selectedChangePlan.value = value;
   });
 }
+function canOpenNovelResource() {
+  return (
+    !!props.novelNavigation &&
+    canEdit.value &&
+    !ownLeaveBlocked.value &&
+    !!current.value &&
+    (!props.initialBranchId || current.value.id === props.initialBranchId)
+  );
+}
+function editNovelResource(request: ResourceNavigationRequest) {
+  if (
+    !canOpenNovelResource() ||
+    leaveBlocked.value ||
+    request.ref.kind !== "resource" ||
+    request.ref.branch_id !== current.value?.id ||
+    (!!props.initialBranchId && request.ref.branch_id !== props.initialBranchId)
+  )
+    return;
+  emit("editResource", request);
+}
+async function afterNovelEdit() {
+  await nextTick();
+  if (
+    !props.novelNavigation ||
+    disposed ||
+    leaveBlocked.value ||
+    !current.value
+  )
+    return;
+  const id = current.value.id;
+  const sequence = ++novelReadSequence;
+  const projectID = props.project.id,
+    actorID = props.actor.id;
+  const active = () =>
+    !disposed &&
+    novelReads.active() &&
+    sequence === novelReadSequence &&
+    props.project.id === projectID &&
+    props.actor.id === actorID &&
+    current.value?.id === id;
+  await bundlePanel.value?.afterNovelEdit();
+  await nextTick();
+  if (!active()) return;
+  await perform(async () => {
+    try {
+      const [branch, history, all] = await Promise.all([
+        novelReads.read<Branch>(`${root}/${id}`),
+        novelReads.read<{ items: Candidate[] }>(`${root}/${id}/candidates`),
+        novelReads.read<{ items: Branch[] }>(root),
+      ]);
+      if (!active()) return;
+      current.value = branch;
+      candidates.value = history.items;
+      branches.value = all.items;
+      notice.value =
+        "已重读原分支版本；原作者输入仍保留，未重新生成清单或审查。";
+    } catch (e) {
+      if (!active()) return;
+      if (e instanceof APIError && [401, 403].includes(e.status)) {
+        current.value = null;
+        branches.value = [];
+        candidates.value = [];
+        draft.value = { entities: [], assertions: [] };
+        mergeView.value = null;
+        deltaPreview.value = null;
+        selectedContext.value = null;
+        selectedChangePlan.value = null;
+      }
+      throw e;
+    }
+  });
+}
+defineExpose({ afterNovelEdit, canOpenNovelResource });
 async function createBranch() {
   await perform(async () => {
     const parent = branches.value.find((b) => b.id === source.value);
@@ -1149,9 +1238,16 @@ onUnmounted(() => {
         :actor="actor"
         :branch="current"
         :candidates="usableCandidates"
-        :blocked="busy || savingDraft || memoryBlocking"
+        :novel-navigation="
+          novelNavigation &&
+          (!initialBranchId || current.id === initialBranchId)
+        "
+        :blocked="
+          busy || savingDraft || memoryBlocking || !!novelNavigationBusy
+        "
         @published="refreshPublished"
         @change-plan="useChangePlan"
+        @edit-resource="editNovelResource"
         @blocking="bundleBlocking = $event"
         @expired="emit('expired')"
       />
