@@ -10,6 +10,15 @@ import {
 } from "../../api";
 import type { NovelBook } from "./types";
 import type { ChapterDraft } from "./chapterTypes";
+import { useBoundedReads } from "../../composables/useBoundedReads";
+import {
+  batchChapterTitles,
+  batchNeedsAttention,
+  batchRecoveryAdvice,
+  batchUnfinished,
+  filterBatches,
+  type BatchFilter,
+} from "./batchRecovery";
 import {
   recipeStates,
   type RecipeRun,
@@ -26,6 +35,10 @@ const props = defineProps<{
   actor: Actor;
 }>();
 const emit = defineEmits<{ close: []; expired: []; edit: [id: string] }>();
+const { read, active } = useBoundedReads({
+  stopped: "连写工作台读取已停止。",
+  timeout: "连写读取超时，已填要求仍保留。请稍后重试。",
+});
 type Chapter = { id: string; title: string; ready: boolean; reason: string };
 type Option = {
   role: string;
@@ -57,6 +70,23 @@ const budget = ref(""),
 const busy = ref(false),
   error = ref(""),
   notice = ref("");
+const configurationReady = ref(false),
+  countEdited = ref(false);
+const writePending = ref(false),
+  batchQuery = ref("");
+const batchFilter = ref<BatchFilter>("all");
+const visibleRuns = computed(() =>
+  filterBatches(
+    runs.value,
+    batchFilter.value,
+    batchQuery.value,
+    chapters.value,
+  ),
+);
+const unfinishedRuns = computed(() => runs.value.filter(batchUnfinished));
+const attentionCount = computed(
+  () => runs.value.filter(batchNeedsAttention).length,
+);
 const candidate = ref<ChapterDraft | null>(null),
   original = ref<ChapterDraft | null>(null);
 const writer = computed(() => options.value.find((o) => o.role === "writer"));
@@ -87,21 +117,39 @@ const findings = computed(() => editorialFindings(allText.value));
 let disposed = false,
   timer: ReturnType<typeof setTimeout> | undefined;
 let stateRequest = 0,
-  stateWatermark = 0;
+  stateWatermark = 0,
+  listWatermark = 0;
 function fail(e: unknown) {
+  if (!active()) return;
+  if (e instanceof APIError && [401, 403].includes(e.status)) {
+    // Keep author inputs, but never retain protected server snapshots on denial.
+    chapters.value = [];
+    options.value = [];
+    runs.value = [];
+    selected.value = null;
+    candidate.value = null;
+    original.value = null;
+    notice.value = "";
+    configurationReady.value = false;
+    stateWatermark = listWatermark = ++stateRequest;
+  }
   error.value = message(e);
   if (e instanceof APIError && e.status === 401) emit("expired");
 }
-async function perform(action: () => Promise<void>) {
-  if (busy.value) return;
+async function perform(action: () => Promise<void>, mutation = false) {
+  if (busy.value || !active()) return;
   busy.value = true;
+  writePending.value = mutation;
   error.value = "";
   try {
     await action();
   } catch (e) {
     if (!disposed) fail(e);
   } finally {
-    if (!disposed) busy.value = false;
+    if (!disposed) {
+      busy.value = false;
+      writePending.value = false;
+    }
   }
 }
 function belongs(run: RecipeRun) {
@@ -129,17 +177,61 @@ function updateSelected(run: RecipeRun, request: number) {
     installSelected(run);
 }
 async function refresh() {
-  const value = await api<{ items: RecipeRun[] }>(
-    `${recipes}?branch_id=${props.book.branch_id}`,
-  );
-  if (disposed) return;
-  runs.value = value.items.filter(belongs);
+  const request = ++stateRequest;
   const id = selected.value?.id;
-  if (id) {
-    const request = ++stateRequest;
-    const run = await api<RecipeRun>(`${recipes}/${id}`);
-    updateSelected(run, request);
+  try {
+    const value = await read<{ items: RecipeRun[] }>(
+      `${recipes}?branch_id=${props.book.branch_id}`,
+    );
+    if (!active() || request < listWatermark) return;
+    listWatermark = request;
+    runs.value = value.items.filter(belongs);
+    if (id && selected.value?.id === id) {
+      const run = await read<RecipeRun>(`${recipes}/${id}`);
+      updateSelected(run, request);
+    }
+  } catch (e) {
+    // Superseded reads, including old permission errors, cannot clear a newer
+    // batch/control view. Current denials still reach fail() and clear it.
+    if (!active() || request < stateRequest || selected.value?.id !== id)
+      return;
+    throw e;
   }
+}
+async function readPair<A, B>(
+  first: Promise<A>,
+  second: Promise<B>,
+): Promise<[A, B]> {
+  // Both reads have the same bounded lifecycle. A quick transient failure must
+  // not hide a slower permission denial from the other request.
+  const results = await Promise.allSettled([first, second] as const);
+  const denial = results.find(
+    (result) =>
+      result.status === "rejected" &&
+      result.reason instanceof APIError &&
+      [401, 403].includes(result.reason.status),
+  );
+  if (denial?.status === "rejected") throw denial.reason;
+  const [a, b] = results;
+  if (a.status === "rejected") throw a.reason;
+  if (b.status === "rejected") throw b.reason;
+  return [a.value, b.value];
+}
+async function loadWorkspace() {
+  const [list, modelOptions] = await readPair(
+    read<{ items: Chapter[] }>(`${root}/chapters`),
+    read<{ items: Option[] }>(
+      `/projects/${props.project.id}/generation-options`,
+    ),
+  );
+  if (!active()) return;
+  chapters.value = list.items;
+  options.value = modelOptions.items;
+  if (!start.value) start.value = list.items[0]?.id ?? "";
+  if (!countEdited.value)
+    count.value = Math.min(10, Math.max(1, list.items.length));
+  configurationReady.value = true;
+  await refresh();
 }
 async function prepare() {
   await perform(async () => {
@@ -176,7 +268,7 @@ async function prepare() {
     notice.value =
       "批次已保存。核对章节、模型和费用上限后再开始；不会自动覆盖私人稿或发布。";
     await refresh();
-  });
+  }, true);
 }
 async function control(action: string) {
   await perform(async () => {
@@ -192,12 +284,12 @@ async function control(action: string) {
       },
     );
     updateSelected(value, request);
-  });
+  }, true);
 }
 async function choose(id: string) {
   await perform(async () => {
     const request = ++stateRequest;
-    const run = await api<RecipeRun>(`${recipes}/${id}`);
+    const run = await read<RecipeRun>(`${recipes}/${id}`);
     if (!disposed) {
       if (selected.value?.id === run.id) updateSelected(run, request);
       else installSelected(run);
@@ -210,11 +302,14 @@ async function preview(step: BatchStage) {
   await perform(async () => {
     const resource = step.frozen.input.novel_chapter?.resource_id;
     if (!resource || selected.value?.state !== "COMPLETED") return;
+    ++stateRequest;
+    candidate.value = null;
+    original.value = null;
     const base = `/novels/${props.book.id}/chapters/${resource}`;
-    const [before, proposed] = await Promise.all([
-      api<ChapterDraft>(`${base}/draft`),
-      api<ChapterDraft>(`${base}/writer/${step.generation_id}`),
-    ]);
+    const [before, proposed] = await readPair(
+      read<ChapterDraft>(`${base}/draft`),
+      read<ChapterDraft>(`${base}/writer/${step.generation_id}`),
+    );
     if (!disposed) {
       original.value = before;
       candidate.value = proposed;
@@ -239,7 +334,7 @@ async function adopt() {
       candidate.value = null;
       original.value = null;
     }
-  });
+  }, true);
 }
 async function retry(step: BatchStage) {
   await perform(async () => {
@@ -255,7 +350,7 @@ async function retry(step: BatchStage) {
       updateSelected(value, request);
       notice.value = "已建立新的尝试；依赖本章的后续章节也会重新生成。";
     }
-  });
+  }, true);
 }
 function schedule() {
   timer = setTimeout(async () => {
@@ -274,24 +369,10 @@ function schedule() {
     if (!disposed) schedule();
   }, 2500);
 }
-onMounted(
-  () =>
-    void perform(async () => {
-      const [list, modelOptions] = await Promise.all([
-        api<{ items: Chapter[] }>(`${root}/chapters`),
-        api<{ items: Option[] }>(
-          `/projects/${props.project.id}/generation-options`,
-        ),
-      ]);
-      if (disposed) return;
-      chapters.value = list.items;
-      options.value = modelOptions.items;
-      start.value = list.items[0]?.id ?? "";
-      count.value = Math.min(10, Math.max(1, list.items.length));
-      await refresh();
-      if (!disposed) schedule();
-    }),
-);
+onMounted(() => {
+  void perform(loadWorkspace);
+  schedule(); // One poller also survives an initial loading failure.
+});
 onBeforeUnmount(() => {
   disposed = true;
   clearTimeout(timer);
@@ -312,6 +393,12 @@ onBeforeUnmount(() => {
     </p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
+    <p v-if="busy && writePending" role="status" class="notice">
+      操作正在等待明确回执，请勿重复提交。读取超时不会取消本次操作，也不会自动释放费用占用。
+    </p>
+    <button type="button" :disabled="busy" @click="perform(loadWorkspace)">
+      {{ configurationReady ? "刷新章节与模型" : "重试加载工作台" }}
+    </button>
     <form class="panel batch-form" @submit.prevent="prepare">
       <h2>准备本批创作</h2>
       <label
@@ -334,6 +421,7 @@ onBeforeUnmount(() => {
           max="10"
           required
           :disabled="busy"
+          @input="countEdited = true"
       /></label>
       <label
         >目标平台<select
@@ -405,18 +493,56 @@ onBeforeUnmount(() => {
     </form>
     <section class="panel">
       <h2>已保存批次</h2>
-      <button :disabled="busy" @click="perform(refresh)">刷新记录</button>
-      <p v-if="!runs.length">暂无批次。</p>
-      <div class="batch-runs">
+      <div aria-label="批次恢复概览">
+        <p>
+          已加载 {{ runs.length }} 批 · 未完成 {{ unfinishedRuns.length }} 批 ·
+          需要处理 {{ attentionCount }} 批。
+        </p>
         <button
-          v-for="run in runs"
-          :key="run.id"
-          :disabled="busy"
-          @click="choose(run.id)"
+          type="button"
+          :disabled="busy || !unfinishedRuns.length"
+          @click="choose(unfinishedRuns[0]!.id)"
         >
-          {{ run.frozen.definition.definition.steps?.length }}章 ·
-          {{ recipeStates[run.state] ?? run.state }} · {{ run.id.slice(-6) }}
+          打开最近未完成批次
         </button>
+        <p class="muted">
+          仅打开最近记录查看进度；不会开始、恢复、重试或采用内容。范围为当前已加载的本书批次。
+        </p>
+      </div>
+      <button :disabled="busy" @click="perform(refresh)">刷新记录</button>
+      <label
+        >查找批次<input
+          v-model="batchQuery"
+          type="search"
+          maxlength="160"
+          placeholder="章节标题、批次编号或状态"
+      /></label>
+      <label
+        >批次状态<select v-model="batchFilter" aria-label="批次状态">
+          <option value="all">全部</option>
+          <option value="unfinished">未完成</option>
+          <option value="attention">需要处理</option>
+          <option value="completed">已完成</option>
+          <option value="cancelled">已取消</option>
+        </select></label
+      >
+      <p v-if="!runs.length">暂无批次。</p>
+      <p v-else-if="!visibleRuns.length">
+        没有匹配的批次，请调整关键词或状态。
+      </p>
+      <div class="batch-runs">
+        <div v-for="run in visibleRuns" :key="run.id">
+          <button :disabled="busy" @click="choose(run.id)">
+            {{ run.frozen.definition.definition.steps?.length }}章 ·
+            {{ recipeStates[run.state] ?? run.state }} · {{ run.id.slice(-6) }}
+          </button>
+          <p v-if="batchChapterTitles(run, chapters).length" class="muted">
+            {{ batchChapterTitles(run, chapters).join("、") }}
+          </p>
+          <p v-if="batchNeedsAttention(run)" class="muted">
+            需要处理{{ run.uncertain_calls ? " · 存在未知费用" : "" }}
+          </p>
+        </div>
       </div>
     </section>
     <section v-if="selected" class="panel" aria-label="连续章节进度">
@@ -424,6 +550,7 @@ onBeforeUnmount(() => {
         {{ recipeStates[selected.state] ?? selected.state
         }}{{ selected.paused ? " · 已暂停" : "" }}
       </h2>
+      <p class="notice">{{ batchRecoveryAdvice(selected) }}</p>
       <p>
         已完成 {{ stages.filter((s) => s.state === "COMPLETED").length }}/{{
           stages.length
