@@ -29,6 +29,7 @@ type ModelInput struct {
 }
 
 type ModelSettings struct {
+	Setup       *ModelSetupReport       `json:"setup,omitempty"`
 	Catalog     []domain.ProviderPreset `json:"catalog"`
 	Connections []domain.ModelConfig    `json:"connections"`
 	Bindings    []domain.ModelBinding   `json:"bindings"`
@@ -82,7 +83,8 @@ func (s *Models) Settings(ctx context.Context, actorID string) (ModelSettings, e
 		return result, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT v.config FROM model_connections c JOIN model_connection_versions v
+	current := map[string]setupModel{}
+	rows, err := tx.QueryContext(ctx, `SELECT c.id,c.revision,v.config,v.credential_ref FROM model_connections c JOIN model_connection_versions v
  ON v.connection_id=c.id AND v.revision=c.revision WHERE c.workspace_id=? ORDER BY c.id`, a.WorkspaceID)
 	if err != nil {
 		return result, err
@@ -90,7 +92,8 @@ func (s *Models) Settings(ctx context.Context, actorID string) (ModelSettings, e
 	for rows.Next() {
 		var encoded string
 		var config domain.ModelConfig
-		if err = rows.Scan(&encoded); err != nil {
+		var record setupModel
+		if err = rows.Scan(&record.ID, &record.Revision, &encoded, &record.CredentialRef); err != nil {
 			rows.Close()
 			return result, err
 		}
@@ -99,6 +102,8 @@ func (s *Models) Settings(ctx context.Context, actorID string) (ModelSettings, e
 			return result, err
 		}
 		result.Connections = append(result.Connections, config)
+		record.Config = config
+		current[record.ID] = record
 	}
 	err = rows.Err()
 	rows.Close()
@@ -124,6 +129,9 @@ func (s *Models) Settings(ctx context.Context, actorID string) (ModelSettings, e
 	}
 	budget, err := budgetTx(ctx, tx, a.WorkspaceID)
 	result.PaidEnabled = budget.Enabled
+	if err == nil {
+		result.Setup = modelSetupTx(ctx, tx, a.WorkspaceID, current, result.Bindings, budget)
+	}
 	return result, err
 }
 
