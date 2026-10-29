@@ -38,14 +38,17 @@ type Transaction struct {
 	Changes     []Change  `json:"changes"`
 }
 type Decoder struct {
-	database     string
-	tables       map[string]TableSchema
-	position     Position
-	boundary     Position
-	pending      *Transaction
-	failed       bool
-	begun        bool
-	pendingBytes int64
+	database         string
+	tables           map[string]TableSchema
+	position         Position
+	boundary         Position
+	pending          *Transaction
+	failed           bool
+	begun            bool
+	pendingBytes     int64
+	closedLogEnds    map[string]closedLogFile
+	awaitingFormat   bool
+	awaitingRotation bool
 }
 
 func NewDecoder(database string, tables []TableSchema, start Position) (*Decoder, error) {
@@ -100,6 +103,14 @@ func (d *Decoder) Consume(event *replication.BinlogEvent) (completed *Transactio
 	if len(event.RawData) > 16<<20 {
 		return nil, errors.New("binary log event capacity exceeded")
 	}
+	if closed, verified := d.closedLogEnds[d.position.File]; verified && event.Header.LogPos > closed.Size {
+		return nil, errors.New("source event exceeds verified closed file")
+	}
+	if d.awaitingRotation {
+		if _, ok := event.Event.(*replication.RotateEvent); !ok || event.Header.LogPos != 0 {
+			return nil, errors.New("closed source requires verified synthetic rotation")
+		}
+	}
 	if rotation, ok := event.Event.(*replication.RotateEvent); ok {
 		if d.pending != nil || rotation.Position > math.MaxUint32 {
 			return nil, errors.New("invalid binary log rotation")
@@ -110,11 +121,34 @@ func (d *Decoder) Consume(event *replication.BinlogEvent) (completed *Transactio
 		if event.Header.LogPos == 0 && next == d.position {
 			return nil, nil
 		}
-		if !validPosition(next) || next.Offset != 4 || event.Header.LogPos <= d.position.Offset || !nextLog(d.position.File, next.File) {
+		if d.awaitingFormat || !validPosition(next) || next.Offset != 4 || !nextLog(d.position.File, next.File) {
 			return nil, errors.New("binary log rotation gap")
 		}
+		if event.Header.LogPos == 0 {
+			closed, verified := d.closedLogEnds[d.position.File]
+			if !verified || event.Header.Timestamp != 0 || event.Header.Flags&replication.LOG_EVENT_ARTIFICIAL_F == 0 ||
+				closed.Size != d.position.Offset || closed.Next != next.File {
+				return nil, errors.New("unverified synthetic binary log rotation")
+			}
+		} else if event.Header.LogPos <= d.position.Offset {
+			return nil, errors.New("binary log rotation gap")
+		} else if closed, verified := d.closedLogEnds[d.position.File]; verified {
+			if event.Header.LogPos != closed.Size || closed.Next != next.File ||
+				event.Header.EventSize != uint32(replication.EventHeaderSize+8+len(rotation.NextLogName)+4) ||
+				uint32(len(event.RawData)) != event.Header.EventSize ||
+				uint64(d.position.Offset)+uint64(event.Header.EventSize) != uint64(closed.Size) {
+				return nil, errors.New("physical rotation does not end the verified closed file")
+			}
+		}
 		d.position = next
+		d.awaitingRotation = false
+		d.awaitingFormat = true
 		return nil, nil
+	}
+	if d.awaitingFormat {
+		if _, ok := event.Event.(*replication.FormatDescriptionEvent); !ok {
+			return nil, errors.New("rotated source lacks validated format metadata")
+		}
 	}
 	if _, ok := event.Event.(*replication.FormatDescriptionEvent); ok {
 		if d.pending != nil || (event.Header.LogPos != 0 && event.Header.LogPos < 4) {
@@ -126,6 +160,21 @@ func (d *Decoder) Consume(event *replication.BinlogEvent) (completed *Transactio
 		if event.Header.LogPos > d.position.Offset {
 			d.position.Offset = event.Header.LogPos
 		}
+		d.awaitingFormat = false
+		return nil, nil
+	}
+	if event.Header.EventType == replication.STOP_EVENT {
+		// Graceful shutdown is metadata only. CRC32 is checked by the reader;
+		// require its exact empty-payload envelope at a proven closed EOF.
+		stop, ok := event.Event.(*replication.GenericEvent)
+		closed, verified := d.closedLogEnds[d.position.File]
+		if !ok || d.pending != nil || d.begun || !verified || len(stop.Data) != 0 ||
+			event.Header.Timestamp == 0 || event.Header.Flags != 0 || event.Header.EventSize != 23 || len(event.RawData) != 23 ||
+			closed.Size != event.Header.LogPos || uint64(d.position.Offset)+23 != uint64(event.Header.LogPos) {
+			return nil, errors.New("unverified source shutdown boundary")
+		}
+		d.position.Offset = event.Header.LogPos
+		d.awaitingRotation = true
 		return nil, nil
 	}
 	if event.Header.LogPos <= d.position.Offset {
