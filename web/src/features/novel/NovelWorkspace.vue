@@ -5,6 +5,7 @@ import type { NovelBook } from "./types";
 import type { PlanningOverview } from "./planningTypes";
 import { workspaceStage, type AuthorIntent } from "./authorWorkbench";
 import NovelAuthorAssistant from "./NovelAuthorAssistant.vue";
+import NovelChapterCatalog from "./NovelChapterCatalog.vue";
 import IPPage from "../ip/IPPage.vue";
 import NovelSettingsEditor from "./NovelSettingsEditor.vue";
 import NovelMaterials from "./NovelMaterials.vue";
@@ -149,6 +150,12 @@ function closeChapter() {
   // The chapter's close action promises to return to its planning context.
   planning.value = true;
   void loadStage();
+}
+function openCatalogChapter(id: string) {
+  initialChapterAction.value = undefined;
+  chapterId.value = id;
+  choosingChapter.value = null;
+  ++chapterRequest;
 }
 onMounted(loadStage);
 watch(onHome, (home, previous) => {
@@ -329,6 +336,15 @@ onBeforeUnmount(() => {
           {{ stage.next }}
         </button>
       </section>
+      <NovelChapterCatalog
+        v-if="canEdit"
+        :key="`${book.id}:${book.settings_revision}`"
+        :book="book"
+        :enabled="overview?.stage === 'DETAIL_PLANNING'"
+        @chapter="openCatalogChapter"
+        @planning="planning = true"
+        @expired="emit('expired')"
+      />
       <section
         v-if="choosingChapter"
         class="panel"

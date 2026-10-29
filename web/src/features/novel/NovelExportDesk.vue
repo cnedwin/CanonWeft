@@ -3,40 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, APIError, message, newOperationID } from "../../api";
 import type { NovelBook } from "./types";
 import type { VisualImageChoice } from "../ip/visualTypes";
+import type { ManuscriptPreview, SavedEdition } from "./manuscriptTypes";
+import NovelEditionCompare from "./NovelEditionCompare.vue";
 const props = defineProps<{ book: NovelBook; canSaveEdition?: boolean }>();
 const emit = defineEmits<{ close: []; expired: []; edit: [id: string] }>();
-type Chapter = {
-  id: string;
-  resource_id: string;
-  volume_id: string;
-  volume: string;
-  title: string;
-  included: boolean;
-  warning: string;
-  characters: number;
-};
-type Preview = {
-  edition_metadata?: { author: string; language: string; description: string };
-  edition_id?: string;
-  cover?: {
-    image_id: string;
-    release_id: string;
-    hash: string;
-    name: string;
-    mime: string;
-    width: number;
-    height: number;
-    warning?: string;
-  };
-  hash: string;
-  title: string;
-  source: string;
-  included: number;
-  missing: number;
-  warnings: number;
-  characters: number;
-  chapters: Chapter[];
-};
 const source = ref("draft"),
   editionID = ref(""),
   coverImage = ref(""),
@@ -46,7 +16,7 @@ const source = ref("draft"),
     props.book.setup.language.includes("繁") ? "zh-Hant" : "zh-Hans",
   ),
   description = ref(props.book.setup.idea);
-const preview = ref<Preview | null>(null),
+const preview = ref<ManuscriptPreview | null>(null),
   catalog = ref<{ id: string; title: string }[]>([]);
 const incomplete = ref(false),
   busy = ref(false),
@@ -65,17 +35,13 @@ const ready = computed(
     (!needsConsent.value || incomplete.value),
 );
 const root = `/novels/${props.book.id}/export`;
-type Edition = {
-  id: string;
+interface Edition extends SavedEdition {
   hash: string;
-  name: string;
-  title: string;
   author: string;
   included: number;
   missing: number;
   created_at: string;
-  published: boolean;
-};
+}
 const editions = ref<Edition[]>([]),
   editionCursor = ref(""),
   editionsBusy = ref(false),
@@ -98,6 +64,10 @@ async function loadEditions(more = false) {
   } catch (e) {
     if (active) {
       editionsError.value = message(e);
+      if (e instanceof APIError && [401, 403].includes(e.status)) {
+        editions.value = [];
+        editionCursor.value = "";
+      }
       if (e instanceof APIError && e.status === 401) emit("expired");
     }
   } finally {
@@ -228,7 +198,11 @@ async function inspect() {
   error.value = "";
   notice.value = "";
   try {
-    const value = await api<Preview>(`${root}/preview`, "POST", input());
+    const value = await api<ManuscriptPreview>(
+      `${root}/preview`,
+      "POST",
+      input(),
+    );
     if (!active) return;
     preview.value = value;
     incomplete.value = false;
@@ -563,6 +537,18 @@ onMounted(() => {
         </button>
       </div>
     </section>
+    <NovelEditionCompare
+      :key="book.id"
+      :book-id="book.id"
+      :editions="editions"
+      :disabled="busy"
+      :loading="editionsBusy"
+      :has-more="!!editionCursor"
+      :load-error="editionsError"
+      @more="loadEditions(true)"
+      @refresh="loadEditions()"
+      @expired="emit('expired')"
+    />
   </section>
 </template>
 
