@@ -36,7 +36,7 @@ type chapterBasisFixture struct {
 	embeddingCalls *atomic.Int32
 }
 
-func newChapterBasisFixture(t *testing.T) chapterBasisFixture {
+func newChapterBasisFixture(t *testing.T, extraChapters ...int) chapterBasisFixture {
 	t.Helper()
 	modelEnvironment(t)
 	// Publication needs an index. This deterministic vector fixture exercises
@@ -128,6 +128,13 @@ func newChapterBasisFixture(t *testing.T) chapterBasisFixture {
 	volume := open("volume", volumeID)
 	volume.Document.Title, volume.Document.Summary, volume.Document.Mainline = "第一卷", "发现旧案", "追查师父"
 	volume.Document.Chapters = []novel.PlannedChapter{{ID: chapterID, Title: "雨夜", Summary: "发现线索", Perspective: "林舟", Goal: "查明踪迹", Events: "进入药铺", Change: "开始调查", Transition: "去旧城"}}
+	if len(extraChapters) > 0 {
+		for i := 0; i < extraChapters[0]; i++ {
+			next := volume.Document.Chapters[0]
+			next.ID = service.NewID()
+			volume.Document.Chapters = append(volume.Document.Chapters, next)
+		}
+	}
 	adopt(volume, "basis-volume")
 	outline := open("book", "")
 	outline.Document.Title, outline.Document.Summary, outline.Document.Mainline, outline.Document.Theme, outline.Document.Ending = "全书规划", "调查营救", "追查师父", "责任", "公开证据"
@@ -137,6 +144,13 @@ func newChapterBasisFixture(t *testing.T) chapterBasisFixture {
 	detail.Document.Title, detail.Document.Summary = "雨夜细纲", "原细纲：寻找纸条"
 	detail.Document.Scenes = []novel.PlannedScene{{ID: service.NewID(), Time: "第一夜", Place: "药铺", Characters: "林舟", Knowledge: "师父失踪", Goal: "寻找足迹", Conflict: "正门被封", Action: "进入后门", Outcome: "找到纸条", Emotion: "不安", Prerequisites: "听闻失踪", Hook: "署名是自己", Words: 2000}}
 	detail = adopt(detail, "basis-detail")
+	for _, next := range volume.Document.Chapters[1:] {
+		d := open("detail", next.ID)
+		d.Document.Title, d.Document.Summary = detail.Document.Title, detail.Document.Summary
+		d.Document.Scenes = append([]novel.PlannedScene(nil), detail.Document.Scenes...)
+		d.Document.Scenes[0].ID = service.NewID()
+		adopt(d, "basis-extra-detail-"+next.ID)
+	}
 	chapters := &service.NovelChapters{IP: ip}
 	resource, err := chapters.Open(ctx, actor.ID, book.ID, chapterID)
 	if err != nil {

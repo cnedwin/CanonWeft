@@ -18,6 +18,10 @@ import NovelCharacterDesigner from "./NovelCharacterDesigner.vue";
 import NovelImages from "./NovelImages.vue";
 import NovelResearchDesk from "./NovelResearchDesk.vue";
 import NovelSourceReview from "./NovelSourceReview.vue";
+import type {
+  BookReviewEditTarget,
+  BookReviewViewState,
+} from "./bookReviewTypes";
 const props = defineProps<{
   book: NovelBook;
   project: Project;
@@ -44,6 +48,19 @@ const sourceReview = ref(false);
 const planningResourceId = ref("");
 const returnToReview = ref(false);
 const reviewFilters = ref({ query: "", kind: "all" });
+const bookReviewView = ref<BookReviewViewState>({
+  runId: "",
+  filters: {
+    query: "",
+    severity: "",
+    category: "",
+    chapterId: "",
+    disposition: "",
+  },
+  focusedIssue: "",
+});
+const returnToBookReview = ref(false);
+const bookReviewTarget = ref<BookReviewEditTarget | null>(null);
 const researchId = ref("");
 const book = ref(props.book);
 const overview = ref<PlanningOverview | null>(null);
@@ -147,12 +164,14 @@ function chooseChapter(id: string) {
 function closeChapter() {
   chapterId.value = "";
   initialChapterAction.value = undefined;
-  reviewing.value = false;
+  reviewing.value = returnToBookReview.value;
   exporting.value = false;
   batch.value = false;
   // The chapter's close action promises to return to its planning context.
   planningResourceId.value = "";
-  planning.value = !returnToReview.value;
+  planning.value = !returnToReview.value && !returnToBookReview.value;
+  returnToBookReview.value = false;
+  bookReviewTarget.value = null;
   if (returnToReview.value) {
     sourceReview.value = true;
     returnToReview.value = false;
@@ -164,6 +183,11 @@ function openReviewPlanning(id: string) {
   returnToReview.value = true;
   sourceReview.value = false;
   planning.value = true;
+}
+function openBookReviewIssue(target: BookReviewEditTarget) {
+  bookReviewTarget.value = target;
+  returnToBookReview.value = true;
+  openCatalogChapter(target.chapter_id);
 }
 function openReviewChapter(id: string) {
   returnToReview.value = true;
@@ -254,7 +278,14 @@ onBeforeUnmount(() => {
       :actor="actor"
       :chapter-id="chapterId"
       :initial-action="initialChapterAction"
-      :return-label="returnToReview ? '保存并返回待复核清单' : undefined"
+      :review-target="bookReviewTarget"
+      :return-label="
+        returnToBookReview
+          ? '保存并返回审稿报告'
+          : returnToReview
+            ? '保存并返回待复核清单'
+            : undefined
+      "
       ref="chapterEditor"
       @close="closeChapter"
       @expired="emit('expired')"
@@ -276,8 +307,12 @@ onBeforeUnmount(() => {
       v-else-if="reviewing"
       :book="book"
       :project="project"
+      :initial-run-id="bookReviewView.runId"
+      :initial-filters="bookReviewView.filters"
+      :initial-focused-issue="bookReviewView.focusedIssue"
+      @view="bookReviewView = $event"
       @close="reviewing = false"
-      @edit="chapterId = $event"
+      @edit="openBookReviewIssue"
       @expired="emit('expired')"
     />
     <NovelExportDesk

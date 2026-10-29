@@ -11,6 +11,8 @@ import (
 
 type NovelBookReviewPass struct {
 	Key        string                 `json:"key"`
+	StepID     string                 `json:"step_id"`
+	OutputHash string                 `json:"output_hash"`
 	ChapterIDs []string               `json:"chapter_ids"`
 	Result     novel.BookReviewResult `json:"result"`
 }
@@ -174,7 +176,7 @@ func (s *NovelBookReviews) Report(ctx context.Context, actor, bookID, id string)
 		if e != nil {
 			return out, e
 		}
-		out.Passes = append(out.Passes, NovelBookReviewPass{Key: step.Key, ChapterIDs: input.ChapterIDs, Result: result})
+		out.Passes = append(out.Passes, NovelBookReviewPass{Key: step.Key, StepID: step.ID, OutputHash: step.OutputHash, ChapterIDs: input.ChapterIDs, Result: result})
 		out.Covered += len(result.Coverage)
 	}
 	return out, nil
