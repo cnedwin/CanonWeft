@@ -68,6 +68,34 @@ async function fixture(page: Page, editor = false) {
           ],
         },
       });
+    if (path === "/api/novels/book/export/preview") {
+      const source = req.postDataJSON().source;
+      const chapters = ["chapter", "unready"].map((id, index) => ({
+        id,
+        resource_id: index === 0 ? "body" : "",
+        volume_id: "volume",
+        volume: "第一卷",
+        title: index === 0 ? "第一章" : "未确认章",
+        hash: index === 0 ? "hash-1" : "",
+        head: "",
+        warning: "",
+        revision: index === 0 && source === "draft" ? 1 : 0,
+        characters: index === 0 ? [...initialText].length : 0,
+        included: index === 0,
+      }));
+      return route.fulfill({
+        json: {
+          hash: "snapshot",
+          title: "雾城药师",
+          source,
+          chapters,
+          included: 1,
+          missing: 1,
+          warnings: 0,
+          characters: [...initialText].length,
+        },
+      });
+    }
     if (path === "/api/novels/book/chapters")
       return route.fulfill({ json: draft.resource });
     if (path.endsWith("/writing-card"))
