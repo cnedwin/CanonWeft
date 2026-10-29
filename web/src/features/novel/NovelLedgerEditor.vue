@@ -27,6 +27,7 @@ const props = defineProps<{
   actor: Actor;
   branch: Branch;
   existingLedgerId?: string;
+  expectedControlId?: string;
   focusEntryId?: string;
   expectedLedgerHash?: string;
   sourceReturnLabel?: string;
@@ -176,6 +177,21 @@ function install(value: LedgerDraft) {
       value.document.chapter_id !== props.chapter.document.chapter_id)
   )
     throw new Error("来源账本与当前章节资源不一致，请返回剧情账本重新读取。");
+  if (props.expectedControlId) {
+    const resource = value.resource as LedgerDraft["resource"] & {
+      branch_id?: string;
+    };
+    if (
+      !props.existingLedgerId ||
+      props.chapter.resource.id !== props.expectedControlId ||
+      resource.kind !== "novel_chapter_ledger" ||
+      resource.branch_id !== props.branch.id ||
+      resource.name !== `剧情账本 · ${props.chapter.document.chapter_id}` ||
+      value.document.source.resource_id !== props.expectedControlId ||
+      value.document.body_id !== props.chapter.document.body_id
+    )
+      throw new Error("账本来源与指定章节资源不一致，请返回原清单重新读取。");
+  }
   saved.value = JSON.stringify(value.document);
   ledger.value = value;
   void focusEntry();
@@ -293,6 +309,8 @@ function unload(e: BeforeUnloadEvent) {
 onMounted(async () => {
   window.addEventListener("beforeunload", unload);
   await perform(async () => {
+    if (props.expectedControlId && !props.existingLedgerId)
+      throw new Error("来源没有指定已有账本，请返回原清单重新读取。");
     const value = props.existingLedgerId
       ? await api<LedgerDraft>(`${props.root}/ledger`)
       : await api<LedgerDraft>(`${props.root}/ledger`, "POST", {});

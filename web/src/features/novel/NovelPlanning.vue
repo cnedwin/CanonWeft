@@ -113,7 +113,13 @@ async function save(force = false): Promise<void> {
     if (dirty.value) return save();
     return;
   }
-  if (!force && !dirty.value && draft.value.revision > 0) return;
+  if (
+    !force &&
+    !dirty.value &&
+    (draft.value.revision > 0 ||
+      draft.value.resource.id === props.initialResourceId)
+  )
+    return;
   clearTimeout(timer);
   const current = draft.value;
   const text = documentText.value;
@@ -183,6 +189,8 @@ async function loadDocument(id: string, title?: string) {
     ),
   ]);
   if (disposed) return;
+  if (value.resource.id !== id)
+    throw new Error("读取的规划与指定资源不一致，请返回清单重新读取。");
   savedText.value = JSON.stringify(value.document);
   savedBaseHead.value = value.base_head;
   draft.value = value;
