@@ -25,7 +25,7 @@ function addInstruction(value: string) {
   instruction.value = next;
   return true;
 }
-defineExpose({ addInstruction });
+defineExpose({ addInstruction, hasInput: () => !!instruction.value.trim() });
 watch(
   () => props.selection,
   (value) => {

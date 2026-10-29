@@ -15,7 +15,13 @@ import {
 import type { ChapterDraft } from "../src/features/novel/chapterTypes";
 
 const original = "🌙林舟问：林舟？\n林舟与临舟。$& [门]";
-async function fixture(page: Page, info: TestInfo, initial = original) {
+async function fixture(
+  page: Page,
+  info: TestInfo,
+  initial = original,
+  navigation = false,
+  reviewOrigin = false,
+) {
   const vite = new URL(info.project.use.baseURL!).origin;
   const module = "/src/features/novel/NovelChapterEditor.vue";
   const compiled = await (await page.request.get(module)).text();
@@ -59,6 +65,15 @@ async function fixture(page: Page, info: TestInfo, initial = original) {
   };
   const writes: (typeof document)[] = [];
   const calls: { path: string; method: string }[] = [];
+  let chapters: unknown = {
+    items: [
+      { id: "z-previous", title: "序章", ready: true, reason: "" },
+      { id: "chapter", title: "第一章", ready: true, reason: "" },
+      { id: "a-next", title: "第二章 夜雨", ready: true, reason: "" },
+      { id: "unready", title: "第三章", ready: false, reason: "细纲尚未确认" },
+    ],
+  };
+  let chaptersStatus = 200;
   let holdSave = false;
   let lostSave: "before" | "after" | null = null;
   const waiting: (() => void)[] = [];
@@ -69,6 +84,8 @@ async function fixture(page: Page, info: TestInfo, initial = original) {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(value));
     };
+    if (path === "/api/novels/book/writing-batches/chapters")
+      return json(chapters, chaptersStatus);
     if (path === "/api/novels/book/chapters" && request.method === "POST")
       return json(draft.resource);
     if (path === "/api/novels/book/chapters/control/draft") {
@@ -139,7 +156,8 @@ async function fixture(page: Page, info: TestInfo, initial = original) {
   import {createApp,h} from ${JSON.stringify(vue)};
   import Editor from ${JSON.stringify(vite + module)};
   import ${JSON.stringify(vite + "/src/style.css")};
-  const app=createApp({render:()=>h(Editor,{book:{id:'book',project_id:'project',branch_id:'branch',setup:{title:'雾城',genre:'悬疑',chapter_min:2000,chapter_max:4000}},project:{id:'project',role:'owner'},actor:{id:'author',workspace_id:'workspace',role:'owner'},chapterId:'chapter'})});app.mount('#app');window.__chapterEditApp=app;
+  window.__chapterNavigations=[];
+  const app=createApp({render:()=>h(Editor,{book:{id:'book',project_id:'project',branch_id:'branch',setup:{title:'雾城',genre:'悬疑',chapter_min:2000,chapter_max:4000}},project:{id:'project',role:'owner'},actor:{id:'author',workspace_id:'workspace',role:'owner'},chapterId:'chapter',allowChapterNavigation:${navigation},reviewTarget:${reviewOrigin ? "{chapter_id:'chapter',control_id:'control',quote:'林舟'}" : "null"},onNavigate:(id)=>window.__chapterNavigations.push(id)})});app.mount('#app');window.__chapterEditApp=app;
   </script></body></html>`,
     }),
   );
@@ -164,6 +182,10 @@ async function fixture(page: Page, info: TestInfo, initial = original) {
     writes,
     calls,
     original: structuredClone(document),
+    setChapters: (value: unknown, status = 200) => {
+      chapters = value;
+      chaptersStatus = status;
+    },
     loseSave: (commit = true) => {
       lostSave = commit ? "after" : "before";
     },
@@ -194,6 +216,182 @@ async function tools(page: Page) {
     .click();
   return page.getByRole("region", { name: "章内查找与替换", exact: true });
 }
+
+test("章节跳转遵从规划顺序，筛选标题且不自动保存或生成", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, true);
+  try {
+    const panel = page.getByRole("region", { name: "章节跳转", exact: true });
+    await expect(panel).toContainText("第 2 / 4 章");
+    await panel.getByRole("button", { name: "上一章", exact: true }).click();
+    await panel.getByRole("button", { name: "下一章", exact: true }).click();
+    await panel.getByLabel("查找要打开的章节", { exact: true }).fill("夜雨");
+    await panel.getByLabel("目标章节", { exact: true }).selectOption("a-next");
+    await panel
+      .getByRole("button", { name: "打开所选章", exact: true })
+      .click();
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __chapterNavigations: string[] })
+            .__chapterNavigations,
+      ),
+    ).toEqual(["z-previous", "a-next", "a-next"]);
+    await panel.getByLabel("查找要打开的章节", { exact: true }).fill("第三章");
+    await expect(panel.getByRole("option", { name: /第三章/ })).toHaveAttribute(
+      "disabled",
+      "",
+    );
+    await expect(
+      panel.getByRole("button", { name: "打开所选章", exact: true }),
+    ).toBeDisabled();
+    state.setChapters({
+      items: [
+        { id: "chapter", title: "第一章", ready: true, reason: "" },
+        ...Array.from({ length: 501 }, (_, index) => ({
+          id: `chapter-${index}`,
+          title: `长篇${index}`,
+          ready: true,
+          reason: "",
+        })),
+      ],
+    });
+    await panel
+      .getByRole("button", { name: "刷新章节顺序", exact: true })
+      .click();
+    await panel.getByLabel("查找要打开的章节", { exact: true }).fill("");
+    await expect(panel).toContainText("找到 502 章，显示前 200 章");
+    await expect(panel.getByRole("option")).toHaveCount(201);
+    await panel.getByLabel("查找要打开的章节", { exact: true }).fill("长篇500");
+    await panel
+      .getByLabel("目标章节", { exact: true })
+      .selectOption("chapter-500");
+    await expect(
+      panel.getByRole("button", { name: "打开所选章", exact: true }),
+    ).toBeEnabled();
+    expect(state.writes).toHaveLength(0);
+    expect(state.calls.filter((call) => call.method === "POST")).toEqual([
+      { path: "/api/novels/book/chapters", method: "POST" },
+    ]);
+  } finally {
+    await state.close();
+  }
+});
+
+test("章节跳转保留保存中和结果未知的手稿，也保护未处理精修备注", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, true);
+  try {
+    const panel = page.getByRole("region", { name: "章节跳转", exact: true });
+    const next = panel.getByRole("button", { name: "下一章", exact: true });
+    await expect(next).toBeEnabled();
+    const notes = page.getByLabel("这次希望怎样修改", { exact: true });
+    await notes.fill("保留结尾伏笔");
+    await expect(next).toBeDisabled();
+    await notes.fill("");
+    await expect(next).toBeEnabled();
+    const editorialNotes = page.getByLabel("题材与编辑重点", { exact: true });
+    await editorialNotes.fill("本章的关键线索不能丢失");
+    await expect(next).toBeDisabled();
+    await expect(editorialNotes).toHaveValue("本章的关键线索不能丢失");
+    await editorialNotes.fill("");
+    await expect(next).toBeEnabled();
+    state.hold();
+    await page
+      .getByLabel("章节正文", { exact: true })
+      .fill(original + "\n还没保存的补写");
+    await expect(next).toBeDisabled();
+    await expect.poll(() => state.writes.length).toBe(1);
+    await expect(next).toBeDisabled();
+    state.loseSave();
+    state.release();
+    await expect(
+      page.getByText("上次保存待核对，本页稿仍保留", { exact: false }),
+    ).toBeVisible();
+    await expect(next).toBeDisabled();
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __chapterNavigations: string[] })
+            .__chapterNavigations,
+      ),
+    ).toEqual([]);
+    await page
+      .getByRole("button", { name: "核对上次保存", exact: true })
+      .click();
+    await expect(next).toBeEnabled();
+    expect(state.writes).toHaveLength(1);
+  } finally {
+    await state.close();
+  }
+});
+
+test("章节跳转目录失败和身份缺失不离开原稿，可原地重试且来源编辑不显示跳转", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, true);
+  try {
+    const panel = page.getByRole("region", { name: "章节跳转", exact: true });
+    await expect(
+      panel.getByRole("button", { name: "下一章", exact: true }),
+    ).toBeEnabled();
+    state.setChapters({ error: "目录暂不可读" }, 503);
+    await panel
+      .getByRole("button", { name: "刷新章节顺序", exact: true })
+      .click();
+    await expect(panel).toContainText("目录暂不可读");
+    await expect(
+      panel.getByRole("button", { name: "下一章", exact: true }),
+    ).toBeDisabled();
+    state.setChapters({
+      items: [{ id: "other", title: "别的章", ready: true, reason: "" }],
+    });
+    await panel
+      .getByRole("button", { name: "刷新章节顺序", exact: true })
+      .click();
+    await expect(panel).toContainText("当前章已不在最新规划目录");
+    await expect(
+      panel.getByRole("button", { name: "打开所选章", exact: true }),
+    ).toBeDisabled();
+    state.setChapters({
+      items: [
+        { id: "chapter", title: "第一章", ready: true, reason: "" },
+        { id: "chapter", title: "重复身份", ready: true, reason: "" },
+      ],
+    });
+    await panel
+      .getByRole("button", { name: "刷新章节顺序", exact: true })
+      .click();
+    await expect(panel).toContainText("章节目录格式或身份不完整");
+    state.setChapters({ error: "当前权限不能读取章节" }, 403);
+    await panel
+      .getByRole("button", { name: "刷新章节顺序", exact: true })
+      .click();
+    await expect(panel).toContainText("当前权限不能读取章节");
+    await expect(panel.getByRole("option")).toHaveCount(1);
+    await expect(page.getByLabel("章节正文", { exact: true })).toHaveValue(
+      original,
+    );
+    expect(state.writes).toHaveLength(0);
+  } finally {
+    await state.close();
+  }
+  const review = await fixture(page, info, original, true, true);
+  try {
+    await expect(
+      page.getByRole("region", { name: "章节跳转", exact: true }),
+    ).toHaveCount(0);
+    expect(
+      review.calls.some((call) =>
+        call.path.endsWith("/writing-batches/chapters"),
+      ),
+    ).toBe(false);
+  } finally {
+    await review.close();
+  }
+});
 
 test("章内查找精确定位重复词，预览后替换单处并沿原保存撤销", async ({
   page,

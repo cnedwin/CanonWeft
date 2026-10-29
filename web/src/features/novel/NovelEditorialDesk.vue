@@ -16,6 +16,7 @@ const platform = ref("general"),
   audience = ref("不限"),
   focus = ref("");
 const findings = computed(() => editorialFindings(props.text));
+defineExpose({ hasInput: () => !!focus.value.trim() });
 </script>
 <template>
   <section class="panel editorial-desk" aria-label="自然文风与投稿前自检">
