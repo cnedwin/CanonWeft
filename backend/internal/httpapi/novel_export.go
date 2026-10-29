@@ -8,6 +8,15 @@ import (
 
 func registerNovelExport(g *echo.Group, ip *service.IP, actor func(*echo.Context) domain.Actor) {
 	svc := &service.NovelExport{IP: ip}
+	g.GET("/novels/:novel/export/editions/:edition/chapters/:chapter", func(c *echo.Context) error {
+		value, err := svc.EditionChapter(c.Request().Context(), actor(c).ID, c.Param("novel"), c.Param("edition"), c.Param("chapter"))
+		if err != nil {
+			return novelEntryError(c, err)
+		}
+		c.Response().Header().Set("Cache-Control", "private, no-store")
+		c.Response().Header().Set("X-Content-Type-Options", "nosniff")
+		return c.JSON(200, value)
+	})
 	g.GET("/novels/:novel/export/editions", func(c *echo.Context) error {
 		v, e := svc.Editions(c.Request().Context(), actor(c).ID, c.Param("novel"), c.QueryParam("after"))
 		if e != nil {

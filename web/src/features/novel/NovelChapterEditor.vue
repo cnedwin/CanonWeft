@@ -21,6 +21,9 @@ import NovelWritingCard from "./NovelWritingCard.vue";
 import NovelReviewAnchor from "./NovelReviewAnchor.vue";
 import type { BookReviewEditTarget } from "./bookReviewTypes";
 import NovelBasisComparison from "./NovelBasisComparison.vue";
+import NovelChapterOldDraft, {
+  type OldDraftTake,
+} from "./NovelChapterOldDraft.vue";
 import { useBoundedReads } from "../../composables/useBoundedReads";
 import { validBasisPreview, type ChapterBasisPreview } from "./chapterBasis";
 import {
@@ -53,6 +56,12 @@ const suggestion = ref<ChapterDraft | null>(null);
 const assistant = ref(false),
   assistantBlocking = ref(false);
 const ledgerOpen = ref(false);
+const oldDraftOpen = ref(false);
+const oldDraftUndo = ref<{
+  resourceId: string;
+  beforeText: string;
+  afterDocument: string;
+} | null>(null);
 const basisVisible = ref(false),
   basisLoading = ref(false),
   basisError = ref("");
@@ -200,6 +209,51 @@ const canEdit = computed(
     ["owner", "editor"].includes(props.project.role),
 );
 const locked = computed(() => busy.value || ledgerOpen.value || !canEdit.value);
+const canUndoOldDraft = computed(
+  () =>
+    !!oldDraftUndo.value &&
+    oldDraftUndo.value.resourceId === draft.value?.resource.id &&
+    oldDraftUndo.value.afterDocument === text.value,
+);
+function takeOldDraft(value: OldDraftTake) {
+  if (
+    !draft.value ||
+    locked.value ||
+    assistant.value ||
+    dirty.value ||
+    saving.value ||
+    value.resourceId !== draft.value.resource.id ||
+    value.revision !== draft.value.revision ||
+    value.hash !== draft.value.hash ||
+    value.document !== text.value
+  )
+    return;
+  const next = { ...draft.value.document, text: value.text };
+  oldDraftUndo.value = {
+    resourceId: draft.value.resource.id,
+    beforeText: draft.value.document.text,
+    afterDocument: JSON.stringify(next),
+  };
+  draft.value.document.text = value.text;
+  notice.value =
+    "旧正文已取回，正在沿现有流程自动暂存为私人稿；其他写作信息保持原样，尚未重新记账、审稿或正式采用。";
+}
+function undoOldDraft() {
+  if (
+    !draft.value ||
+    !oldDraftUndo.value ||
+    !canUndoOldDraft.value ||
+    locked.value ||
+    assistant.value ||
+    dirty.value ||
+    saving.value
+  )
+    return;
+  const priorText = oldDraftUndo.value.beforeText;
+  oldDraftUndo.value = null;
+  draft.value.document.text = priorText;
+  notice.value = "已撤销这次取回，正在自动暂存替换前正文。";
+}
 const characters = computed(
   () =>
     branch.value?.snapshot.entities.filter(
@@ -286,6 +340,8 @@ async function save(): Promise<void> {
   }
 }
 watch(text, () => {
+  if (oldDraftUndo.value && text.value !== oldDraftUndo.value.afterDocument)
+    oldDraftUndo.value = null;
   if (selectedScope.value?.sourceText !== draft.value?.document.text)
     selectedScope.value = null;
   if (assistant.value && sessionDocument.value !== text.value) {
@@ -731,6 +787,12 @@ onBeforeUnmount(() => {
         <button :disabled="locked || assistant" @click="openLedger">
           提取与编辑本章账本
         </button>
+        <button
+          :disabled="locked || assistant"
+          @click="oldDraftOpen = !oldDraftOpen"
+        >
+          对照与取回旧稿
+        </button>
         <button @click="download">下载当前私人稿</button>
         <button v-if="assistant" :disabled="busy" @click="closeAssistant">
           返回手动写作
@@ -744,6 +806,18 @@ onBeforeUnmount(() => {
           放弃助手输入并返回正文
         </button>
       </div>
+      <NovelChapterOldDraft
+        v-if="oldDraftOpen"
+        :book-id="book.id"
+        :current="draft"
+        :saved="!dirty && !saving"
+        :disabled="locked || assistant"
+        :undo-available="canUndoOldDraft"
+        @take="takeOldDraft"
+        @undo="undoOldDraft"
+        @close="oldDraftOpen = false"
+        @expired="emit('expired')"
+      />
       <NovelBasisComparison
         v-if="basisVisible"
         :preview="basisPreview"
