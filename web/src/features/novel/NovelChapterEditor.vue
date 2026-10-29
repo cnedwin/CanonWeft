@@ -20,6 +20,7 @@ import NovelInlineRefinement from "./NovelInlineRefinement.vue";
 import NovelWritingCard from "./NovelWritingCard.vue";
 import NovelReviewAnchor from "./NovelReviewAnchor.vue";
 import type { BookReviewEditTarget } from "./bookReviewTypes";
+import type { StoryLedgerEditTarget } from "./storyLedgerTypes";
 import NovelBasisComparison from "./NovelBasisComparison.vue";
 import NovelChapterOldDraft, {
   type OldDraftTake,
@@ -43,6 +44,7 @@ const props = defineProps<{
   initialAction?: "write" | "refine";
   returnLabel?: string;
   reviewTarget?: BookReviewEditTarget | null;
+  storyTarget?: StoryLedgerEditTarget | null;
 }>();
 const emit = defineEmits<{ close: []; expired: [] }>();
 const root = `/novels/${props.book.id}/chapters`;
@@ -78,6 +80,12 @@ const refinementEditor = ref<InstanceType<typeof NovelInlineRefinement> | null>(
 );
 const manuscriptField = ref<HTMLTextAreaElement | null>(null);
 const reviewAnchorVisible = ref(true);
+const activeStoryTarget = computed(() =>
+  props.reviewTarget ? null : (props.storyTarget ?? null),
+);
+const evidenceTarget = computed(
+  () => props.reviewTarget ?? activeStoryTarget.value,
+);
 async function locateReviewQuote(value: {
   start: number;
   end: number;
@@ -110,7 +118,9 @@ function addReviewInstruction(value: string) {
       "已有精修要求较长或当前不可编辑，请先整理后再带入；原输入保持原样。";
     return;
   }
-  notice.value = "已补充审稿问题到原地精修要求，尚未生成或修改正文。";
+  notice.value = activeStoryTarget.value
+    ? "已补充账本证据到原地精修要求，尚未生成或修改正文、账本。"
+    : "已补充审稿问题到原地精修要求，尚未生成或修改正文。";
   refinementRegion.value?.scrollIntoView({
     behavior: "smooth",
     block: "center",
@@ -310,7 +320,7 @@ async function save(): Promise<void> {
     if (dirty.value) return save();
     return;
   }
-  if (!dirty.value && draft.value.revision > 0) return;
+  if (!dirty.value && (draft.value.revision > 0 || props.storyTarget)) return;
   clearTimeout(timer);
   const current = draft.value,
     content = text.value;
@@ -473,20 +483,33 @@ async function openLedger() {
   if (basisVisible.value)
     invalidateBasis("已切换到账本核对，请返回后重新读取依据对照。");
   await perform(async () => {
-    await save();
+    const target = activeStoryTarget.value;
+    if (!target || dirty.value || saving.value) await save();
     if (disposed || dirty.value || !draft.value) return;
     const value = await api<ChapterDraft>(
       `${root}/${draft.value.resource.id}/draft`,
     );
     if (disposed) return;
+    if (
+      target &&
+      (!target.control_id ||
+        !target.ledger_id ||
+        value.resource.id !== target.control_id ||
+        value.document.chapter_id !== target.chapter_id)
+    )
+      throw new Error("账本来源与当前章节资源不一致，请返回剧情账本重新读取。");
     install(value);
-    if (!value.ready || !value.document.text.trim())
+    if (!target && (!value.ready || !value.document.text.trim()))
       throw new Error(value.reason || "请先写入本章正文。");
     branch.value = await api<Branch>(
       `/projects/${props.project.id}/branches/${props.book.branch_id}`,
     );
     if (!disposed) ledgerOpen.value = true;
   });
+}
+async function returnToStoryLedger() {
+  ledgerOpen.value = false;
+  await close();
 }
 async function afterPublication() {
   await perform(async () => {
@@ -716,9 +739,16 @@ function unload(e: BeforeUnloadEvent) {
 onMounted(async () => {
   window.addEventListener("beforeunload", unload);
   await perform(async () => {
-    const resource = await api<PlanResource>(root, "POST", {
-      chapter_id: props.chapterId,
-    });
+    const target = activeStoryTarget.value;
+    if (target && (!target.control_id || target.chapter_id !== props.chapterId))
+      throw new Error(
+        "账本来源缺少已有章节资源，不能打开正文；请返回剧情账本重新读取。",
+      );
+    const resource = target
+      ? { id: target.control_id }
+      : await api<PlanResource>(root, "POST", {
+          chapter_id: props.chapterId,
+        });
     const [value, currentBranch] = await Promise.all([
       api<ChapterDraft>(`${root}/${resource.id}/draft`),
       api<Branch>(
@@ -726,6 +756,14 @@ onMounted(async () => {
       ),
     ]);
     if (!disposed) {
+      if (
+        target &&
+        (value.resource.id !== target.control_id ||
+          value.document.chapter_id !== target.chapter_id)
+      )
+        throw new Error(
+          "账本来源与当前章节资源不一致，请返回剧情账本重新读取。",
+        );
       install(value);
       branch.value = currentBranch;
       if (props.initialAction === "refine")
@@ -735,6 +773,13 @@ onMounted(async () => {
         );
     }
   });
+  if (
+    !disposed &&
+    activeStoryTarget.value?.open_ledger &&
+    draft.value &&
+    branch.value
+  )
+    await openLedger();
 });
 onBeforeUnmount(() => {
   disposed = true;
@@ -785,7 +830,7 @@ onBeforeUnmount(() => {
           请 Agent 写作或修改
         </button>
         <button :disabled="locked || assistant" @click="openLedger">
-          提取与编辑本章账本
+          {{ activeStoryTarget ? "打开对应账本" : "提取与编辑本章账本" }}
         </button>
         <button
           :disabled="locked || assistant"
@@ -830,11 +875,12 @@ onBeforeUnmount(() => {
       />
       <NovelReviewAnchor
         v-if="
-          reviewTarget &&
+          evidenceTarget &&
           reviewAnchorVisible &&
-          reviewTarget.chapter_id === draft.document.chapter_id
+          evidenceTarget.chapter_id === draft.document.chapter_id
         "
-        :target="reviewTarget"
+        :target="evidenceTarget"
+        :label="activeStoryTarget ? '账本证据' : undefined"
         :text="draft.document.text"
         :hash="draft.hash"
         :saved="!dirty && !saving"
@@ -925,7 +971,14 @@ onBeforeUnmount(() => {
         :project="project"
         :actor="actor"
         :branch="branch"
+        :existing-ledger-id="activeStoryTarget?.ledger_id"
+        :focus-entry-id="activeStoryTarget?.entry_id"
+        :expected-ledger-hash="activeStoryTarget?.ledger_hash"
+        :source-return-label="
+          activeStoryTarget ? '保存账本并返回剧情账本' : undefined
+        "
         @close="ledgerOpen = false"
+        @source-return="returnToStoryLedger"
         @published="afterPublication"
         @expired="emit('expired')"
       />

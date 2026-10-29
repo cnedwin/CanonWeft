@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import {
   api,
   APIError,
@@ -19,8 +26,18 @@ const props = defineProps<{
   project: Project;
   actor: Actor;
   branch: Branch;
+  existingLedgerId?: string;
+  focusEntryId?: string;
+  expectedLedgerHash?: string;
+  sourceReturnLabel?: string;
 }>();
-const emit = defineEmits<{ close: []; expired: []; published: [] }>();
+const emit = defineEmits<{
+  close: [];
+  sourceReturn: [];
+  expired: [];
+  published: [];
+}>();
+const ledgerElement = ref<HTMLElement | null>(null);
 const ledger = ref<LedgerDraft | null>(null),
   candidate = ref<LedgerDraft | null>(null);
 const busy = ref(false),
@@ -90,6 +107,18 @@ const serialized = computed(() =>
 const dirty = computed(
   () => !!ledger.value && serialized.value !== saved.value,
 );
+const focusEntryCount = computed(
+  () =>
+    ledger.value?.document.entries.filter(
+      (entry) => entry.id === props.focusEntryId,
+    ).length ?? 0,
+);
+const sourceVersionChanged = computed(
+  () =>
+    !!props.expectedLedgerHash &&
+    !!ledger.value?.hash &&
+    props.expectedLedgerHash !== ledger.value.hash,
+);
 const entities = computed(() =>
   props.branch.snapshot.entities.filter((e) => e.status !== "disabled"),
 );
@@ -114,9 +143,42 @@ const contexts = {
   plan: "未发生的计划",
 };
 let disposed = false;
+let focusedEntryKey = "";
+async function focusEntry() {
+  const id = props.focusEntryId;
+  if (!id || !ledger.value || focusEntryCount.value !== 1) return;
+  const key = JSON.stringify([ledger.value.resource.id, id]);
+  if (key === focusedEntryKey) return;
+  await nextTick();
+  if (disposed || id !== props.focusEntryId || focusEntryCount.value !== 1)
+    return;
+  const entry = Array.from(
+    ledgerElement.value?.querySelectorAll<HTMLDetailsElement>(
+      "[data-ledger-entry-id]",
+    ) ?? [],
+  ).find((element) => element.dataset.ledgerEntryId === id);
+  if (!entry) return;
+  focusedEntryKey = key;
+  entry.open = true;
+  entry.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+watch(
+  () => props.focusEntryId,
+  () => {
+    focusedEntryKey = "";
+    void focusEntry();
+  },
+);
 function install(value: LedgerDraft) {
+  if (
+    props.existingLedgerId &&
+    (value.resource.id !== props.existingLedgerId ||
+      value.document.chapter_id !== props.chapter.document.chapter_id)
+  )
+    throw new Error("来源账本与当前章节资源不一致，请返回剧情账本重新读取。");
   saved.value = JSON.stringify(value.document);
   ledger.value = value;
+  void focusEntry();
 }
 function fail(e: unknown) {
   error.value = message(e);
@@ -135,7 +197,11 @@ async function perform(action: () => Promise<void>) {
   }
 }
 async function save() {
-  if (!ledger.value || (!dirty.value && ledger.value.revision > 0)) return;
+  if (
+    !ledger.value ||
+    (!dirty.value && (ledger.value.revision > 0 || props.existingLedgerId))
+  )
+    return;
   const result = await api<LedgerDraft>(
     `${props.root}/ledger`,
     "PUT",
@@ -202,12 +268,15 @@ function addEntry() {
     evidence: [],
   });
 }
-async function close() {
+async function close(destination: "chapter" | "source" = "chapter") {
   if (reviewing.value || reviewBlocking.value) return;
   if (assistant.value) return;
   await perform(async () => {
     await save();
-    if (!disposed && !dirty.value) emit("close");
+    if (!disposed && !dirty.value) {
+      if (destination === "source") emit("sourceReturn");
+      else emit("close");
+    }
   });
 }
 function undo() {
@@ -224,7 +293,9 @@ function unload(e: BeforeUnloadEvent) {
 onMounted(async () => {
   window.addEventListener("beforeunload", unload);
   await perform(async () => {
-    const value = await api<LedgerDraft>(`${props.root}/ledger`, "POST", {});
+    const value = props.existingLedgerId
+      ? await api<LedgerDraft>(`${props.root}/ledger`)
+      : await api<LedgerDraft>(`${props.root}/ledger`, "POST", {});
     if (!disposed) install(value);
     const prior = await api<ChapterRelease | null>(`${props.root}/release`);
     if (!disposed) release.value = prior;
@@ -237,11 +308,22 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="ledger-editor panel" aria-label="本章剧情账本">
+  <section
+    ref="ledgerElement"
+    class="ledger-editor panel"
+    aria-label="本章剧情账本"
+  >
     <header class="actions">
       <h2>本章剧情账本</h2>
-      <button :disabled="busy || assistant || reviewing" @click="close">
+      <button :disabled="busy || assistant || reviewing" @click="() => close()">
         保存账本并返回正文
+      </button>
+      <button
+        v-if="sourceReturnLabel"
+        :disabled="busy || assistant || reviewing"
+        @click="() => close('source')"
+      >
+        {{ sourceReturnLabel }}
       </button>
     </header>
     <p>
@@ -250,6 +332,27 @@ onBeforeUnmount(() => {
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
     <template v-if="ledger">
+      <p v-if="expectedLedgerHash" class="muted">
+        回查来源账本版本：<code>{{ expectedLedgerHash }}</code>
+      </p>
+      <p v-if="sourceVersionChanged" role="status">
+        来源账本与当前编辑版本不同，定位供人工核对。不会自动改写账本来源或沿用旧的生成资格。
+      </p>
+      <p v-else-if="expectedLedgerHash && !ledger.hash" role="status">
+        当前账本未提供可比的版本标记，不能确认与回查来源相同；请人工核对。
+      </p>
+      <p v-if="focusEntryId && focusEntryCount === 1" role="status">
+        已按记录编号定位回查条目：<code>{{ focusEntryId }}</code
+        >。
+      </p>
+      <p v-else-if="focusEntryId && !focusEntryCount" role="status">
+        当前账本中未找到来源记录编号 <code>{{ focusEntryId }}</code
+        >；该条目可能已经变化，请人工核对，不会按同名内容或位置替代定位。
+      </p>
+      <p v-else-if="focusEntryId" role="status">
+        当前账本存在重复记录编号 <code>{{ focusEntryId }}</code
+        >，无法唯一定位，请人工核对。
+      </p>
       <p v-if="!ledger.ready" role="alert">{{ ledger.reason }}</p>
       <p role="status">
         {{
@@ -369,6 +472,16 @@ onBeforeUnmount(() => {
           :key="entry.id"
           open
           class="ledger-entry"
+          :class="{
+            'ledger-entry-focused':
+              entry.id === focusEntryId && focusEntryCount === 1,
+          }"
+          :data-ledger-entry-id="entry.id"
+          :aria-label="
+            entry.id === focusEntryId && focusEntryCount === 1
+              ? '当前回查的剧情记录'
+              : undefined
+          "
         >
           <summary>
             {{ index + 1 }} · {{ entry.subject_name || "未关联主体" }} ·
@@ -613,6 +726,11 @@ onBeforeUnmount(() => {
   border: 1px solid #cbd5e1;
   border-radius: 0.6rem;
   padding: 1rem;
+}
+.ledger-entry-focused {
+  border-color: #876127;
+  box-shadow: 0 0 0 3px #c7af8340;
+  background: #c7af8312;
 }
 .ledger-entry textarea {
   width: 100%;

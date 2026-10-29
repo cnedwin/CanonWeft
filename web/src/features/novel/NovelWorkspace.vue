@@ -18,6 +18,12 @@ import NovelCharacterDesigner from "./NovelCharacterDesigner.vue";
 import NovelImages from "./NovelImages.vue";
 import NovelResearchDesk from "./NovelResearchDesk.vue";
 import NovelSourceReview from "./NovelSourceReview.vue";
+import NovelStoryLedger from "./NovelStoryLedger.vue";
+import {
+  initialStoryLedgerView,
+  type StoryLedgerView,
+} from "./storyLedgerReads";
+import type { StoryLedgerEditTarget } from "./storyLedgerTypes";
 import type {
   BookReviewEditTarget,
   BookReviewViewState,
@@ -45,6 +51,10 @@ const designingCharacters = ref(false);
 const images = ref(false);
 const research = ref(false);
 const sourceReview = ref(false);
+const storyLedger = ref(false);
+const storyLedgerView = ref<StoryLedgerView>(initialStoryLedgerView());
+const storyLedgerTarget = ref<StoryLedgerEditTarget | null>(null);
+const returnToStoryLedger = ref(false);
 const planningResourceId = ref("");
 const returnToReview = ref(false);
 const reviewFilters = ref({ query: "", kind: "all" });
@@ -78,6 +88,7 @@ const initialChapterAction = ref<"write" | "refine" | undefined>();
 const onHome = computed(
   () =>
     !sourceReview.value &&
+    !storyLedger.value &&
     !research.value &&
     !images.value &&
     !chapterId.value &&
@@ -165,11 +176,17 @@ function closeChapter() {
   chapterId.value = "";
   initialChapterAction.value = undefined;
   reviewing.value = returnToBookReview.value;
+  storyLedger.value = returnToStoryLedger.value;
   exporting.value = false;
   batch.value = false;
   // The chapter's close action promises to return to its planning context.
   planningResourceId.value = "";
-  planning.value = !returnToReview.value && !returnToBookReview.value;
+  planning.value =
+    !returnToReview.value &&
+    !returnToBookReview.value &&
+    !returnToStoryLedger.value;
+  returnToStoryLedger.value = false;
+  storyLedgerTarget.value = null;
   returnToBookReview.value = false;
   bookReviewTarget.value = null;
   if (returnToReview.value) {
@@ -187,6 +204,15 @@ function openReviewPlanning(id: string) {
 function openBookReviewIssue(target: BookReviewEditTarget) {
   bookReviewTarget.value = target;
   returnToBookReview.value = true;
+  openCatalogChapter(target.chapter_id);
+}
+function openStoryLedgerEntry(target: StoryLedgerEditTarget) {
+  storyLedgerTarget.value = target;
+  bookReviewTarget.value = null;
+  returnToReview.value = false;
+  returnToBookReview.value = false;
+  returnToStoryLedger.value = true;
+  storyLedger.value = false;
   openCatalogChapter(target.chapter_id);
 }
 function openReviewChapter(id: string) {
@@ -226,8 +252,17 @@ onBeforeUnmount(() => {
       :disabled="!canEdit || (!onHome && !chapterId)"
       @intent="routeIntent"
     />
+    <NovelStoryLedger
+      v-if="storyLedger"
+      :book-id="book.id"
+      :initial-view="storyLedgerView"
+      @view="storyLedgerView = $event"
+      @edit="openStoryLedgerEntry"
+      @expired="emit('expired')"
+      @close="storyLedger = false"
+    />
     <NovelSourceReview
-      v-if="sourceReview"
+      v-else-if="sourceReview"
       :book-id="book.id"
       :title="book.setup.title"
       :initial-filters="reviewFilters"
@@ -279,12 +314,15 @@ onBeforeUnmount(() => {
       :chapter-id="chapterId"
       :initial-action="initialChapterAction"
       :review-target="bookReviewTarget"
+      :story-target="storyLedgerTarget"
       :return-label="
-        returnToBookReview
-          ? '保存并返回审稿报告'
-          : returnToReview
-            ? '保存并返回待复核清单'
-            : undefined
+        returnToStoryLedger
+          ? '保存并返回剧情账本'
+          : returnToBookReview
+            ? '保存并返回审稿报告'
+            : returnToReview
+              ? '保存并返回待复核清单'
+              : undefined
       "
       ref="chapterEditor"
       @close="closeChapter"
@@ -500,6 +538,9 @@ onBeforeUnmount(() => {
           </div>
           <h3>审稿与成书</h3>
           <div class="workspace-actions">
+            <button v-if="canEdit" @click="storyLedger = true">
+              全书剧情账本
+            </button>
             <button v-if="canEdit" @click="reviewing = true">
               整卷与全书审稿
             </button>

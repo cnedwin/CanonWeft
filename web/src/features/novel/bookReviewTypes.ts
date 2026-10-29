@@ -1,4 +1,5 @@
 import type { RecipeRun } from "../skills/recipeTypes";
+import type { ChapterEvidenceTarget } from "./chapterEvidence";
 
 export interface BookReviewFilters {
   query: string;
@@ -12,17 +13,11 @@ export interface BookReviewViewState {
   filters: BookReviewFilters;
   focusedIssue: string;
 }
-export interface BookReviewEditTarget {
+export interface BookReviewEditTarget extends ChapterEvidenceTarget {
   run_id: string;
   step_id: string;
   output_hash: string;
   finding_id: string;
-  chapter_id: string;
-  quote: string;
-  reviewed_hash: string;
-  title: string;
-  explanation: string;
-  suggestion: string;
 }
 export interface BookReviewChapter {
   id: string;

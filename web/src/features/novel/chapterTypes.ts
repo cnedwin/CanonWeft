@@ -56,6 +56,7 @@ export interface LedgerDraft {
   resource: PlanResource;
   revision: number;
   base_head: string;
+  hash?: string;
   ready: boolean;
   reason: string;
   document: {
