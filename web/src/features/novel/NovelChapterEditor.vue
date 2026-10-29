@@ -18,6 +18,19 @@ import NovelEditorialDesk from "./NovelEditorialDesk.vue";
 import NovelChapterResearch from "./NovelChapterResearch.vue";
 import NovelInlineRefinement from "./NovelInlineRefinement.vue";
 import NovelWritingCard from "./NovelWritingCard.vue";
+import NovelChapterTextTools from "./NovelChapterTextTools.vue";
+import {
+  chapterTextareaSelection,
+  chapterSourceSelection,
+  type ChapterTextChange,
+} from "./chapterTextTools";
+import NovelChapterSaveRecovery from "./NovelChapterSaveRecovery.vue";
+import {
+  classifyChapterSave,
+  sameChapterDocument,
+  type ChapterSaveAttempt,
+  type ChapterSaveResolution,
+} from "./chapterSaveRecovery";
 import NovelReviewAnchor from "./NovelReviewAnchor.vue";
 import type { BookReviewEditTarget } from "./bookReviewTypes";
 import type { StoryLedgerEditTarget } from "./storyLedgerTypes";
@@ -118,8 +131,10 @@ async function locateReviewQuote(value: {
   }
   await nextTick();
   if (draft.value?.document.text !== value.text) return;
+  const visible = chapterTextareaSelection(value.text, value.start, value.end);
+  if (manuscriptField.value?.value !== visible.text) return;
   manuscriptField.value?.focus();
-  manuscriptField.value?.setSelectionRange(value.start, value.end);
+  manuscriptField.value?.setSelectionRange(visible.start, visible.end);
   manuscriptField.value?.scrollIntoView({
     behavior: "smooth",
     block: "center",
@@ -171,10 +186,18 @@ const refinementCandidate = computed(() => {
 function selectQuote(event: Event) {
   const field = event.target as HTMLTextAreaElement;
   try {
-    selectedScope.value = captureRefinement(
-      field.value,
+    const source = draft.value?.document.text ?? "";
+    if (field.value !== source.replace(/\r\n?/g, "\n"))
+      throw new Error("正文已变化");
+    const selected = chapterSourceSelection(
+      source,
       field.selectionStart,
       field.selectionEnd,
+    );
+    selectedScope.value = captureRefinement(
+      source,
+      selected.start,
+      selected.end,
     );
   } catch {
     selectedScope.value = null;
@@ -228,12 +251,49 @@ const text = computed(() =>
   draft.value ? JSON.stringify(draft.value.document) : "",
 );
 const dirty = computed(() => !!draft.value && text.value !== saved.value);
+const unconfirmedSave = ref<ChapterSaveAttempt | null>(null);
+let saveSequence = 0;
+const focusMode = ref(false);
+const textToolsOpen = ref(false);
+const manualEditContext = computed(() => {
+  if (!draft.value) return "";
+  const { text: manuscript, ...context } = draft.value.document;
+  void manuscript;
+  return JSON.stringify([props.book.id, draft.value.resource.id, context]);
+});
 const canEdit = computed(
   () =>
     ["owner", "editor"].includes(props.actor.role) &&
     ["owner", "editor"].includes(props.project.role),
 );
 const locked = computed(() => busy.value || ledgerOpen.value || !canEdit.value);
+watch([assistant, ledgerOpen], () => {
+  if (assistant.value || ledgerOpen.value) focusMode.value = false;
+});
+function toggleFocus() {
+  if (busy.value || assistant.value || ledgerOpen.value) return;
+  focusMode.value = !focusMode.value;
+  void nextTick(() => manuscriptField.value?.focus());
+}
+function changeChapterText(value: ChapterTextChange) {
+  if (
+    disposed ||
+    !draft.value ||
+    locked.value ||
+    assistant.value ||
+    saving.value ||
+    unconfirmedSave.value ||
+    basisLoading.value ||
+    value.context !== manualEditContext.value ||
+    value.sourceText !== draft.value.document.text
+  )
+    return;
+  draft.value.document.text = value.text;
+  notice.value =
+    value.action === "undo"
+      ? "已撤销这次章内替换，正在自动暂存正文。"
+      : "替换已加入当前章私人稿，正在自动暂存。请继续核对语意、账本与后续章节。";
+}
 const canUndoOldDraft = computed(
   () =>
     !!oldDraftUndo.value &&
@@ -247,6 +307,7 @@ function takeOldDraft(value: OldDraftTake) {
     assistant.value ||
     dirty.value ||
     saving.value ||
+    unconfirmedSave.value ||
     value.resourceId !== draft.value.resource.id ||
     value.revision !== draft.value.revision ||
     value.hash !== draft.value.hash ||
@@ -271,7 +332,8 @@ function undoOldDraft() {
     locked.value ||
     assistant.value ||
     dirty.value ||
-    saving.value
+    saving.value ||
+    unconfirmedSave.value
   )
     return;
   const priorText = oldDraftUndo.value.beforeText;
@@ -350,6 +412,8 @@ async function save(): Promise<void> {
     if (dirty.value) return save();
     return;
   }
+  if (unconfirmedSave.value)
+    throw new Error("上次保存结果需要先核对；本页输入仍保留，尚未重发保存。");
   if (
     !dirty.value &&
     (draft.value.revision > 0 ||
@@ -361,6 +425,16 @@ async function save(): Promise<void> {
   clearTimeout(timer);
   const current = draft.value,
     content = text.value;
+  const attempt: ChapterSaveAttempt = {
+    id: ++saveSequence,
+    resourceId: current.resource.id,
+    revision: current.revision,
+    hash: current.hash,
+    baseHead: current.base_head,
+    previous: JSON.parse(saved.value),
+    document: JSON.parse(content),
+    content,
+  };
   saving.value = true;
   pending = (async () => {
     const result = await api<ChapterDraft>(
@@ -373,6 +447,15 @@ async function save(): Promise<void> {
       },
     );
     if (disposed || draft.value?.resource.id !== current.resource.id) return;
+    if (
+      result.resource?.id !== attempt.resourceId ||
+      result.revision !== attempt.revision + 1 ||
+      result.base_head !== attempt.baseHead ||
+      !result.document ||
+      !sameChapterDocument(result.document, attempt.document) ||
+      !result.hash
+    )
+      throw new Error("保存回执不完整或与提交内容不一致，请先核对已存稿。");
     draft.value.revision = result.revision;
     draft.value.hash = result.hash;
     draft.value.ready = result.ready;
@@ -381,6 +464,12 @@ async function save(): Promise<void> {
   })();
   try {
     await pending;
+  } catch (cause) {
+    if (!disposed && draft.value?.resource.id === attempt.resourceId) {
+      unconfirmedSave.value = attempt;
+      clearTimeout(timer);
+    }
+    throw cause;
   } finally {
     pending = undefined;
     if (!disposed) saving.value = false;
@@ -396,10 +485,46 @@ watch(text, () => {
     suggestion.value = null;
     notice.value = "正文已修改，旧候选已失效；你的手改会继续暂存。";
   }
-  if (!dirty.value || !canEdit.value) return;
+  if (!dirty.value || !canEdit.value || unconfirmedSave.value) return;
   clearTimeout(timer);
   timer = setTimeout(() => void save().catch(fail), 600);
 });
+async function resolveSave(value: ChapterSaveResolution) {
+  const attempt = unconfirmedSave.value;
+  if (
+    !attempt ||
+    !draft.value ||
+    value.attemptId !== attempt.id ||
+    locked.value ||
+    saving.value ||
+    assistant.value ||
+    draft.value.resource.id !== attempt.resourceId ||
+    text.value !== value.currentDocument
+  )
+    return;
+  const status = classifyChapterSave(attempt, value.remote);
+  if (
+    (value.kind === "committed" && status !== "committed") ||
+    (value.kind === "retry" && status !== "unchanged")
+  )
+    return;
+  clearTimeout(timer);
+  draft.value.revision = value.remote.revision;
+  draft.value.hash = value.remote.hash;
+  draft.value.ready = value.remote.ready;
+  draft.value.reason = value.remote.reason;
+  saved.value =
+    value.kind === "committed"
+      ? attempt.content
+      : JSON.stringify(value.remote.document);
+  unconfirmedSave.value = null;
+  error.value = "";
+  if (value.kind === "retry") await perform(save);
+  else
+    notice.value = dirty.value
+      ? "已读回并核实上次提交，本页继续手写的内容保持原样，尚未重新发送；请保存当前修改。"
+      : "已读回并核实上次提交，私人稿已保存，没有重发写请求。";
+}
 async function perform(action: () => Promise<void>) {
   if (busy.value) return;
   busy.value = true;
@@ -723,7 +848,13 @@ async function confirmBasis() {
   });
 }
 async function adopt() {
-  if (!suggestion.value || !draft.value || assistantBlocking.value) return;
+  if (
+    !suggestion.value ||
+    !draft.value ||
+    assistantBlocking.value ||
+    unconfirmedSave.value
+  )
+    return;
   await perform(async () => {
     const next = suggestion.value!,
       current = draft.value!;
@@ -775,7 +906,12 @@ function download() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function unload(e: BeforeUnloadEvent) {
-  if (dirty.value || saving.value || assistantBlocking.value) {
+  if (
+    dirty.value ||
+    saving.value ||
+    assistantBlocking.value ||
+    unconfirmedSave.value
+  ) {
     e.preventDefault();
     e.returnValue = "";
   }
@@ -854,7 +990,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="chapter-workspace" aria-label="章节写作">
+  <section
+    class="chapter-workspace"
+    :class="{ 'focus-mode': focusMode }"
+    aria-label="章节写作"
+  >
     <header class="chapter-heading">
       <div>
         <p class="eyebrow">{{ book.setup.title }}</p>
@@ -869,40 +1009,67 @@ onBeforeUnmount(() => {
     <template v-if="draft">
       <p role="status">
         {{
-          saving
-            ? "正在保存私人稿…"
-            : dirty
-              ? "有尚未保存的修改"
-              : "私人稿已暂存"
+          unconfirmedSave
+            ? "上次保存待核对，本页稿仍保留"
+            : saving
+              ? "正在保存私人稿…"
+              : dirty
+                ? "有尚未保存的修改"
+                : "私人稿已暂存"
         }}
         · {{ wordCount.toLocaleString() }} 字（不计空白）
       </p>
       <p v-if="!draft.ready" role="alert">
         {{ draft.reason }}。原稿仍可编辑和下载。
       </p>
-      <div class="actions">
-        <button :disabled="locked" @click="() => perform(save)">
+      <div class="actions chapter-tools">
+        <button
+          class="focus-keep"
+          :disabled="busy || assistant || ledgerOpen"
+          :aria-pressed="focusMode"
+          @click="toggleFocus"
+        >
+          {{ focusMode ? "退出专注写作" : "进入专注写作" }}
+        </button>
+        <button
+          class="focus-keep"
+          :aria-expanded="textToolsOpen"
+          @click="textToolsOpen = !textToolsOpen"
+        >
+          章内查找与替换
+        </button>
+        <button
+          class="focus-keep"
+          :disabled="locked || !!unconfirmedSave"
+          @click="() => perform(save)"
+        >
           保存私人稿
         </button>
         <button
-          :disabled="locked || assistant || basisLoading"
+          :disabled="locked || assistant || basisLoading || !!unconfirmedSave"
           @click="refreshBasis"
         >
           更新写作依据，保留正文
         </button>
-        <button :disabled="locked || assistant" @click="regularAssistant">
+        <button
+          :disabled="locked || assistant || !!unconfirmedSave"
+          @click="regularAssistant"
+        >
           请 Agent 写作或修改
         </button>
-        <button :disabled="locked || assistant" @click="openLedger">
+        <button
+          :disabled="locked || assistant || !!unconfirmedSave"
+          @click="openLedger"
+        >
           {{ activeStoryTarget ? "打开对应账本" : "提取与编辑本章账本" }}
         </button>
         <button
-          :disabled="locked || assistant"
+          :disabled="locked || assistant || !!unconfirmedSave"
           @click="oldDraftOpen = !oldDraftOpen"
         >
           对照与取回旧稿
         </button>
-        <button @click="download">下载当前私人稿</button>
+        <button class="focus-keep" @click="download">下载当前私人稿</button>
         <button v-if="assistant" :disabled="busy" @click="closeAssistant">
           返回手动写作
         </button>
@@ -915,12 +1082,22 @@ onBeforeUnmount(() => {
           放弃助手输入并返回正文
         </button>
       </div>
+      <NovelChapterSaveRecovery
+        v-if="unconfirmedSave"
+        :root="root"
+        :attempt="unconfirmedSave"
+        :current="draft"
+        :disabled="locked || assistant || saving"
+        @resolve="resolveSave"
+        @expired="emit('expired')"
+      />
       <NovelChapterOldDraft
         v-if="oldDraftOpen"
+        v-show="!focusMode"
         :book-id="book.id"
         :current="draft"
-        :saved="!dirty && !saving"
-        :disabled="locked || assistant"
+        :saved="!dirty && !saving && !unconfirmedSave"
+        :disabled="locked || assistant || !!unconfirmedSave"
         :undo-available="canUndoOldDraft"
         @take="takeOldDraft"
         @undo="undoOldDraft"
@@ -929,15 +1106,17 @@ onBeforeUnmount(() => {
       />
       <NovelBasisComparison
         v-if="basisVisible"
+        v-show="!focusMode"
         :preview="basisPreview"
         :busy="basisLoading"
         :error="basisError"
-        :disabled="locked || assistant || saving || dirty"
+        :disabled="locked || assistant || saving || dirty || !!unconfirmedSave"
         @retry="refreshBasis"
         @confirm="confirmBasis"
         @close="closeBasis"
       />
       <NovelReviewAnchor
+        v-show="!focusMode"
         v-if="
           evidenceTarget &&
           reviewAnchorVisible &&
@@ -953,17 +1132,28 @@ onBeforeUnmount(() => {
         "
         :text="draft.document.text"
         :hash="draft.hash"
-        :saved="!dirty && !saving"
-        :disabled="locked || assistant"
+        :saved="!dirty && !saving && !unconfirmedSave"
+        :disabled="locked || assistant || !!unconfirmedSave"
         @locate="locateReviewQuote"
         @refine="addReviewInstruction"
         @close="reviewAnchorVisible = false"
+      />
+      <NovelChapterTextTools
+        v-show="textToolsOpen"
+        :text="draft.document.text"
+        :context="manualEditContext"
+        :disabled="
+          locked || assistant || saving || basisLoading || !!unconfirmedSave
+        "
+        @change="changeChapterText"
+        @locate="locateReviewQuote"
+        @close="textToolsOpen = false"
       />
       <fieldset :disabled="locked" class="chapter-form">
         <label
           >章节标题<input v-model="draft.document.title" maxlength="300"
         /></label>
-        <div class="chapter-context">
+        <div v-show="!focusMode" class="chapter-context">
           <label
             >故事位置<input
               v-model.number="draft.document.story_time"
@@ -1004,30 +1194,32 @@ onBeforeUnmount(() => {
           />
         </label>
       </fieldset>
-      <div ref="refinementRegion">
+      <div v-show="!focusMode" ref="refinementRegion">
         <NovelInlineRefinement
           ref="refinementEditor"
           :text="draft.document.text"
           :selection="selectedScope"
-          :disabled="locked || assistant"
+          :disabled="locked || assistant || !!unconfirmedSave"
           @refine="refineInPlace"
         />
       </div>
       <NovelWritingCard
+        v-show="!focusMode"
         :root="`${root}/${draft.resource.id}`"
         :revision="draft.revision"
         :hash="draft.hash"
         :ready="draft.ready"
-        :saved="!dirty && !saving"
+        :saved="!dirty && !saving && !unconfirmedSave"
         @expired="emit('expired')"
       />
       <NovelChapterResearch
+        v-show="!focusMode"
         :key="draft.resource.id"
         :root="`${root}/${draft.resource.id}`"
         :project-id="project.id"
         :draft="draft"
-        :disabled="locked"
-        :saved="!dirty && !saving"
+        :disabled="locked || !!unconfirmedSave"
+        :saved="!dirty && !saving && !unconfirmedSave"
         @change="draft.document.references = $event"
         @expired="emit('expired')"
       />
@@ -1068,9 +1260,10 @@ onBeforeUnmount(() => {
       />
       <NovelEditorialDesk
         v-if="!assistant && !ledgerOpen"
+        v-show="!focusMode"
         :text="draft.document.text"
         :quote="selectedQuote"
-        :disabled="locked"
+        :disabled="locked || !!unconfirmedSave"
         @assist="refine"
       />
       <GenerationPanel
@@ -1114,7 +1307,10 @@ onBeforeUnmount(() => {
             }}</pre>
           </article>
         </div>
-        <button :disabled="busy || assistantBlocking" @click="adopt">
+        <button
+          :disabled="busy || assistantBlocking || !!unconfirmedSave"
+          @click="adopt"
+        >
           将候选加入私人稿
         </button>
         <button :disabled="busy" @click="suggestion = null">
@@ -1129,6 +1325,18 @@ onBeforeUnmount(() => {
 .chapter-workspace {
   display: grid;
   gap: 1rem;
+}
+.focus-mode {
+  width: min(100%, 64rem);
+  margin-inline: auto;
+  min-width: 0;
+}
+.focus-mode .chapter-tools button:not(.focus-keep) {
+  display: none;
+}
+.focus-mode .chapter-form textarea {
+  min-height: 65vh;
+  font-size: 1.125rem;
 }
 .chapter-heading,
 .actions {
