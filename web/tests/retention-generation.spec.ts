@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
+import { openIPSection } from "./ip-edit-helper";
 
 test("任务材料到期保留历史并清除旧详情，作者未保存输入不丢失", async ({
   page,
@@ -77,6 +78,7 @@ test("任务材料到期保留历史并清除旧详情，作者未保存输入�
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
+  await openIPSection(page, "知识与任务");
   await expect(page.locator(".generation-task")).toHaveCount(2);
   await page.getByRole("button", { name: "查看任务 dddddd" }).click();
   await expect(page.locator(".generation-detail")).toContainText(

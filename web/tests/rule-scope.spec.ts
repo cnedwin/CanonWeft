@@ -1,5 +1,5 @@
 import { loginAsOwner } from "./owner-session";
-import { saveReasonedCandidate } from "./ip-edit-helper";
+import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 import { test, expect } from "@playwright/test";
 
 test("规则例外缺证据时禁止采用，补齐后可发布并保留有效期", async ({ page }) => {
@@ -32,6 +32,7 @@ test("规则例外缺证据时禁止采用，补齐后可发布并保留有效�
   await saveReasonedCandidate(page);
   await page.getByRole("button", { name: "确认采用此候选" }).first().click();
   await expect(page.getByRole("alert")).toContainText("缺少可验证事实");
+  await openIPSection(page, "设定草稿");
   await page.getByRole("button", { name: "新增设定断言" }).click();
   await page.getByLabel("设定属性").nth(1).fill("许可");
   await page.getByLabel("设定内容").nth(1).fill("有");
@@ -52,6 +53,7 @@ test("规则例外缺证据时禁止采用，补齐后可发布并保留有效�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "设定草稿");
   await page.getByText("适用条件、有效期与例外", { exact: true }).click();
   await expect(
     page.getByLabel("规则结束时间（不含）", { exact: true }),

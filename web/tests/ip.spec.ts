@@ -1,5 +1,5 @@
 import { loginAsOwner } from "./owner-session";
-import { saveReasonedCandidate } from "./ip-edit-helper";
+import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 import { test, expect } from "@playwright/test";
 
 test("设定候选确认发布后可见，改编从固定版本创建，刷新保留", async ({
@@ -24,6 +24,7 @@ test("设定候选确认发布后可见，改编从固定版本创建，刷新�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "设定草稿");
   await expect(page.getByLabel("实体名称", { exact: true })).toHaveValue(
     "林舟",
   );
@@ -33,6 +34,7 @@ test("设定候选确认发布后可见，改编从固定版本创建，刷新�
   await page.getByRole("button", { name: "发布此版本" }).first().click();
   await expect(page.getByTestId("published-snapshot")).toContainText("林舟");
   await expect(page.getByLabel("设定内容")).toBeDisabled();
+  await openIPSection(page, "设定草稿");
   await page.getByLabel("提出锁定设定修订（须负责人专门批准）").check();
   await page
     .getByLabel("修订理由", { exact: true })

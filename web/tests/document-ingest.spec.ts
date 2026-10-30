@@ -1,7 +1,7 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
 import { fileURLToPath } from "node:url";
-import { saveReasonedCandidate } from "./ip-edit-helper";
+import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 
 test("真实扫描 PDF 展示 OCR 来源，空白图保留待核对且损坏 PDF 明确报错", async ({
   page,
@@ -14,6 +14,7 @@ test("真实扫描 PDF 展示 OCR 来源，空白图保留待核对且损坏 PDF
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("从文件导入资料", { exact: true }).click();
 
   const fixture = (name: string) =>
@@ -35,6 +36,7 @@ test("真实扫描 PDF 展示 OCR 来源，空白图保留待核对且损坏 PDF
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("从文件导入资料", { exact: true }).click();
   await expect(page.getByLabel("导入内容 · 可修改")).toHaveValue(edited);
   await page.getByText("查看完整覆盖报告", { exact: true }).click();
@@ -93,6 +95,7 @@ test("导入草稿读取失败可重试，迟到暂存回执与另一页面修�
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("从文件导入资料", { exact: true }).click();
   let failedRead = false;
   let draftPath = "";
@@ -155,6 +158,7 @@ test("导入草稿读取失败可重试，迟到暂存回执与另一页面修�
   await second.getByRole("button", { name, exact: true }).click();
   await second.getByRole("button", { name: "打开设定库" }).click();
   await second.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(second, "版本与分支");
   await second.getByText("从文件导入资料", { exact: true }).click();
   await expect(second.getByLabel("导入内容 · 可修改")).toHaveValue(
     "等待回执时继续修改🌙。",
@@ -195,6 +199,7 @@ test("导入旧草稿必须核对新设定后继续，保留作者文字与原�
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("从文件导入资料", { exact: true }).click();
   const uploadReceipt = page.waitForResponse(
     (response) =>
@@ -223,6 +228,7 @@ test("导入旧草稿必须核对新设定后继续，保留作者文字与原�
   await second.getByRole("button", { name, exact: true }).click();
   await second.getByRole("button", { name: "打开设定库" }).click();
   await second.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(second, "设定草稿");
   await second.getByRole("button", { name: "新增角色或实体" }).click();
   await second.getByLabel("实体名称", { exact: true }).fill("林舟");
   await second.getByLabel("实体简介").fill("在港口行医的青年。");
@@ -235,6 +241,7 @@ test("导入旧草稿必须核对新设定后继续，保留作者文字与原�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("从文件导入资料", { exact: true }).click();
   await expect(editor).toHaveValue("作者核实：林舟清晨抵达旧港口。");
   const save = page.getByRole("button", {
@@ -257,6 +264,7 @@ test("导入旧草稿必须核对新设定后继续，保留作者文字与原�
   await third.getByRole("button", { name, exact: true }).click();
   await third.getByRole("button", { name: "打开设定库" }).click();
   await third.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(third, "设定草稿");
   await third.getByRole("button", { name: "新增角色或实体" }).click();
   await third.getByLabel("实体名称", { exact: true }).last().fill("望海亭");
   await third.getByLabel("实体简介").last().fill("港口的报时亭。");

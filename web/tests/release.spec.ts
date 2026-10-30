@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
+import { openIPSection } from "./ip-edit-helper";
 
 test("两份共享资料作为联合候选确认发布，刷新后读取正式内容", async ({
   page,
@@ -11,6 +12,7 @@ test("两份共享资料作为联合候选确认发布，刷新后读取正式�
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   for (const title of ["故事备忘", "时间记录"]) {
     await page.getByLabel("资料名称", { exact: true }).fill(title);
     await page.getByRole("button", { name: "创建资料", exact: true }).click();
@@ -40,6 +42,7 @@ test("两份共享资料作为联合候选确认发布，刷新后读取正式�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page
     .getByRole("button", { name: "编辑 故事备忘", exact: true })
     .click();

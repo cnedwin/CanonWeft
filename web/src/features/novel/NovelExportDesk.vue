@@ -16,6 +16,8 @@ const source = ref("draft"),
     props.book.setup.language.includes("繁") ? "zh-Hant" : "zh-Hans",
   ),
   description = ref(props.book.setup.idea);
+const exportView = ref<"current" | "history">("current"),
+  currentSource = ref("draft");
 const preview = ref<ManuscriptPreview | null>(null),
   catalog = ref<{ id: string; title: string }[]>([]);
 const incomplete = ref(false),
@@ -175,6 +177,18 @@ watch(
   },
   { flush: "sync" },
 );
+watch(
+  source,
+  (value) => {
+    exportView.value = value === "edition" ? "history" : "current";
+    if (value !== "edition") currentSource.value = value;
+  },
+  { flush: "sync" },
+);
+function showExport(view: "current" | "history") {
+  exportView.value = view;
+  source.value = view === "history" ? "edition" : currentSource.value;
+}
 function input() {
   if (source.value === "edition")
     return { source: "edition", edition_id: editionID.value };
@@ -278,19 +292,46 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="novel-export" aria-label="整书与分卷导出">
-    <header class="section-heading">
+  <section class="novel-export author-subpage" aria-label="整书与分卷导出">
+    <header class="author-page-header">
       <div>
         <p class="eyebrow">{{ book.setup.title }}</p>
         <h1>整书与分卷导出</h1>
       </div>
-      <button :disabled="busy" @click="emit('close')">返回小说工作台</button>
+      <button class="quiet" :disabled="busy" @click="emit('close')">
+        返回本书工作区
+      </button>
     </header>
-    <p>
+    <p class="author-page-description">
       按已确认的大纲顺序整理正文。先保存章节修改，再检查导出范围。导出不会替你发布作品。
     </p>
+    <nav class="author-page-nav" aria-label="导出分区">
+      <button
+        class="quiet"
+        :aria-pressed="exportView === 'current'"
+        :disabled="busy"
+        @click="showExport('current')"
+      >
+        当前稿整理与导出
+      </button>
+      <button
+        class="quiet"
+        :aria-pressed="exportView === 'history'"
+        :disabled="busy"
+        @click="showExport('history')"
+      >
+        历史稿本与对照
+        <span>{{
+          editions.filter((edition) => edition.published).length
+        }}</span>
+      </button>
+    </nav>
     <fieldset class="panel export-options" :disabled="busy">
-      <legend>导出内容与书籍信息</legend>
+      <legend>
+        {{
+          exportView === "history" ? "从已保存稿本导出" : "导出内容与书籍信息"
+        }}
+      </legend>
       <label
         >正文来源<select v-model="source" aria-label="导出正文来源">
           <option value="draft">我的私人稿（无私人稿时用已采用稿）</option>
@@ -359,65 +400,72 @@ onMounted(() => {
             maxlength="120"
             placeholder="填写作者名或笔名"
         /></label>
-        <label
-          >电子书语言<select v-model="language" aria-label="电子书语言">
-            <option value="zh-Hans">简体中文</option>
-            <option value="zh-Hant">繁体中文</option>
-            <option value="en">英语</option>
-            <option value="ja">日语</option>
-            <option value="ko">韩语</option>
-          </select></label
-        >
-        <label class="full"
-          >简介<textarea
-            v-model="description"
-            aria-label="导出简介"
-            maxlength="4000"
-            rows="3"
-          />
-        </label>
-        <p class="muted full">
-          署名、语言和简介仅用于本次导出。文件不包含角色秘密、剧情账本或模型提示词。
-        </p>
-        <label class="full"
-          >封面版本
-          <select
-            v-model="coverImage"
-            aria-label="导出封面版本"
-            :disabled="coversBusy"
-          >
-            <option value="">不带封面图片</option>
-            <option v-for="c in covers" :key="c.id" :value="c.id">
-              {{ c.report.novel_image?.name }} · {{ c.id.slice(0, 8)
-              }}{{ c.needs_review ? " · 待复核" : "" }}
-            </option>
-          </select>
-        </label>
-        <p class="muted full">
-          仅列出本书已采用的封面。可在“封面与场景图”中生成或上传并确认采用；TXT
-          和 Markdown 为文字稿，不嵌入图片。
-        </p>
-        <p v-if="coversError" class="full" role="alert">
-          封面列表：{{ coversError }}
-        </p>
-        <button
-          v-if="coversError"
-          :disabled="coversBusy"
-          @click="loadCovers(!!coverCursor)"
-        >
-          重试读取封面
-        </button>
-        <button
-          v-if="coverCursor"
-          :disabled="coversBusy"
-          @click="loadCovers(true)"
-        >
-          继续查找更多已采用封面
-        </button>
+        <details class="full export-book-details">
+          <summary>书籍信息与封面</summary>
+          <div class="export-book-fields">
+            <label
+              >电子书语言<select v-model="language" aria-label="电子书语言">
+                <option value="zh-Hans">简体中文</option>
+                <option value="zh-Hant">繁体中文</option>
+                <option value="en">英语</option>
+                <option value="ja">日语</option>
+                <option value="ko">韩语</option>
+              </select></label
+            >
+            <label class="full"
+              >简介<textarea
+                v-model="description"
+                aria-label="导出简介"
+                maxlength="4000"
+                rows="3"
+              />
+            </label>
+            <p class="muted full">
+              署名、语言和简介仅用于本次导出。文件不包含角色秘密、剧情账本或模型提示词。
+            </p>
+            <label class="full"
+              >封面版本
+              <select
+                v-model="coverImage"
+                aria-label="导出封面版本"
+                :disabled="coversBusy"
+              >
+                <option value="">不带封面图片</option>
+                <option v-for="c in covers" :key="c.id" :value="c.id">
+                  {{ c.report.novel_image?.name }} · {{ c.id.slice(0, 8)
+                  }}{{ c.needs_review ? " · 待复核" : "" }}
+                </option>
+              </select>
+            </label>
+            <p class="muted full">
+              仅列出本书已采用的封面。可在“封面与场景图”中生成或上传并确认采用；TXT
+              和 Markdown 为文字稿，不嵌入图片。
+            </p>
+            <p v-if="coversError" class="full" role="alert">
+              封面列表：{{ coversError }}
+            </p>
+            <button
+              v-if="coversError"
+              :disabled="coversBusy"
+              @click="loadCovers(!!coverCursor)"
+            >
+              重试读取封面
+            </button>
+            <button
+              v-if="coverCursor"
+              :disabled="coversBusy"
+              @click="loadCovers(true)"
+            >
+              继续查找更多已采用封面
+            </button>
+          </div>
+        </details>
       </template>
-      <button :disabled="source === 'edition' && !editionID" @click="inspect">
-        检查导出内容
-      </button>
+      <div class="full">
+        <button :disabled="source === 'edition' && !editionID" @click="inspect">
+          检查导出内容
+        </button>
+      </div>
     </fieldset>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
@@ -537,38 +585,55 @@ onMounted(() => {
         </button>
       </div>
     </section>
-    <NovelEditionCompare
-      :key="book.id"
-      :book-id="book.id"
-      :editions="editions"
-      :disabled="busy"
-      :loading="editionsBusy"
-      :has-more="!!editionCursor"
-      :load-error="editionsError"
-      @more="loadEditions(true)"
-      @refresh="loadEditions()"
-      @expired="emit('expired')"
-    />
+    <section v-show="exportView === 'history'" aria-label="历史稿本对照">
+      <NovelEditionCompare
+        :key="book.id"
+        :book-id="book.id"
+        :editions="editions"
+        :disabled="busy"
+        :loading="editionsBusy"
+        :has-more="!!editionCursor"
+        :load-error="editionsError"
+        @more="loadEditions(true)"
+        @refresh="loadEditions()"
+        @expired="emit('expired')"
+      />
+    </section>
   </section>
 </template>
 
 <style scoped>
 .novel-export {
   max-width: 1100px;
-  margin: 24px auto;
-  padding: 20px;
-}
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
+  margin: auto;
 }
 .export-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin: 20px 0;
+  min-width: 0;
+}
+.export-options legend {
+  padding: 0 8px;
+  font-weight: 600;
+}
+.export-book-details {
+  border-block: 1px solid #e1e5da;
+  padding: 14px 0;
+}
+.export-book-details summary {
+  cursor: pointer;
+  color: #52665d;
+}
+.export-book-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding-top: 18px;
+}
+.export-book-fields p {
+  margin: 0;
 }
 .export-options label {
   display: grid;
@@ -583,8 +648,20 @@ onMounted(() => {
   overflow: auto;
 }
 .export-chapters li {
-  padding: 12px 0;
-  border-bottom: 1px solid #ddd;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #e1e5da;
+}
+.export-chapters li span {
+  flex: 1 1 220px;
+}
+.export-chapters li button {
+  background: transparent;
+  color: #285c4d;
+  border: 1px solid #d7ded5;
 }
 .export-chapters strong {
   display: block;
@@ -624,9 +701,8 @@ select {
   .export-options {
     grid-template-columns: 1fr;
   }
-  .section-heading {
-    align-items: flex-start;
-    flex-direction: column;
+  .export-book-fields {
+    grid-template-columns: 1fr;
   }
 }
 </style>

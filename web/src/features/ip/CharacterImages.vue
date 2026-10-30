@@ -16,6 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   blocking: [value: boolean];
   portrait: [url: string];
+  attention: [value: { characterId: string; count: number }];
 }>();
 interface ImageMetadata {
   character_id: string;
@@ -339,6 +340,7 @@ async function approve(item: ImageItem) {
       :images="items"
       @saved="load()"
       @blocking="generatingInput = $event"
+      @attention="emit('attention', { characterId, count: $event })"
     />
     <label
       >查看造型<select v-model="selectedLook" aria-label="查看造型">

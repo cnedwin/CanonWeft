@@ -90,6 +90,43 @@ const locked = computed(
     !!assistantBranch.value ||
     !canEdit.value,
 );
+const fieldGroups = computed(() => {
+  const kind = draft.value?.document.kind;
+  if (!kind) return [];
+  return [
+    {
+      id: "core",
+      title: "故事核心",
+      description: "先写清这一部分要讲什么，以及怎样向前推进。",
+      keys: ["title", "summary", "mainline", "theme"],
+    },
+    {
+      id: "world",
+      title: "世界规则与边界",
+      description: "把背景、规则、代价与不可违背的事项放在一起核对。",
+      keys: ["world_rules", "costs", "boundaries", "setting", "factions"],
+    },
+    {
+      id: "direction",
+      title: kind === "world" ? "人物与故事走向" : "走向与待定事项",
+      description: "保留人物变化、结局方向，以及仍有意留白的问题。",
+      keys: [
+        "characters",
+        "arcs",
+        "turning_points",
+        "ending",
+        "open_questions",
+      ],
+    },
+  ]
+    .map((group) => ({
+      ...group,
+      fields: planFields.filter(
+        (field) => field.kinds.includes(kind) && group.keys.includes(field.key),
+      ),
+    }))
+    .filter((group) => group.fields.length);
+});
 const missingSources = computed(() =>
   sources.value.filter(
     (id) => !overview.value?.sources.some((s) => s.id === id),
@@ -603,23 +640,24 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="novel-planning">
-    <header class="planning-header">
+  <section class="novel-planning author-subpage">
+    <header class="planning-header author-page-header">
       <div>
         <p class="eyebrow">{{ book.setup.title }}</p>
         <h1>小说规划</h1>
+        <p class="author-page-description">
+          从世界与故事走到全书安排，再逐章完善细纲。手写与助手建议都先留在私人草稿中。
+        </p>
       </div>
       <button
+        class="quiet"
         :disabled="busy || !!candidate || !!assistantBranch"
         @click="close"
       >
         {{ returnLabel ?? "保存并返回小说" }}
       </button>
     </header>
-    <p>
-      先确认世界与故事，再确认全部分卷与暂定章节，最后逐章确认细纲。可先手工完善，也可持续修改；未来情节始终保留在作者规划中。
-    </p>
-    <p v-if="overview" class="notice">
+    <p v-if="overview" class="author-status">
       {{
         overview.stage === "WORLD_PLANNING"
           ? "当前：完善世界与故事"
@@ -628,13 +666,17 @@ onBeforeUnmount(() => {
             : "当前：按章完善细纲"
       }}。{{ overview.reason }}
     </p>
-    <nav class="actions" aria-label="小说规划阶段">
+    <nav class="author-page-nav" aria-label="小说规划阶段">
       <button
+        class="quiet"
+        :aria-pressed="draft?.document.kind === 'world'"
         :disabled="busy || !!candidate || !!assistantBranch"
         @click="open('world')"
       >
         世界与故事</button
       ><button
+        class="quiet"
+        :aria-pressed="!!draft && draft.document.kind !== 'world'"
         :disabled="busy || !!candidate || !!assistantBranch"
         @click="open('book')"
       >
@@ -643,22 +685,32 @@ onBeforeUnmount(() => {
     </nav>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status" class="notice">{{ notice }}</p>
-    <div v-if="draft && canEdit" class="actions">
+    <div v-if="draft && canEdit" class="actions planning-tools">
       <button
+        class="quiet"
         v-if="draft.document.kind === 'detail' && draft.published"
         :disabled="locked"
         @click="writeChapter"
       >
         开始本章写作
       </button>
-      <button :disabled="locked" @click="openAssistant">
+      <button class="quiet" :disabled="locked" @click="openAssistant">
         请 Agent 帮我完善当前规划
       </button>
-      <button v-if="assistantBranch" :disabled="busy" @click="closeAssistant">
+      <button
+        v-if="assistantBranch"
+        class="quiet"
+        :disabled="busy"
+        @click="closeAssistant"
+      >
         返回手工规划
       </button>
     </div>
-    <section v-if="assistantBranch && draft" aria-label="规划辅助创作">
+    <section
+      v-if="assistantBranch && draft"
+      class="author-work-area"
+      aria-label="规划辅助创作"
+    >
       <p>
         助手读取本版草稿、已确认上游规划与所选资料。当前表单暂时锁定，关闭助手即可继续手写。原任务可从历史列表重新打开。
       </p>
@@ -692,21 +744,28 @@ onBeforeUnmount(() => {
         <button :disabled="busy || assistantBlocking" @click="applySuggestion">
           将建议加入私人草稿
         </button>
-        <button :disabled="busy" @click="suggestion = null">
+        <button class="quiet" :disabled="busy" @click="suggestion = null">
           暂不使用此建议
         </button>
       </section>
     </section>
-    <p v-if="draft" data-testid="plan-draft-status">
+    <p
+      v-if="draft"
+      class="author-status"
+      role="status"
+      data-testid="plan-draft-status"
+    >
       {{
-        saving || dirty
+        saving
           ? "规划草稿正在暂存…"
-          : "规划草稿已暂存；确认采用前不改变正式规划"
+          : dirty
+            ? "有未暂存的修改；离开前会再次保存"
+            : "规划草稿已暂存；确认采用前不改变正式规划"
       }}
     </p>
     <section
       v-if="candidate && candidateDocument"
-      class="panel"
+      class="panel author-work-area"
       aria-label="规划候选对照"
     >
       <h2>
@@ -733,61 +792,92 @@ onBeforeUnmount(() => {
           @click="confirm"
         >
           确认采用此规划</button
-        ><button :disabled="busy" @click="leavePreview">返回修改</button
-        ><button v-if="canEdit" :disabled="busy" @click="useHistory">
+        ><button class="quiet" :disabled="busy" @click="leavePreview">
+          返回修改</button
+        ><button
+          v-if="canEdit"
+          class="quiet"
+          :disabled="busy"
+          @click="useHistory"
+        >
           将此版作为新的私人草稿
         </button>
       </div>
     </section>
     <template v-if="draft && !candidate">
-      <section class="panel">
-        <h2>{{ planNames[draft.document.kind] }}</h2>
-        <p>
+      <section class="panel author-work-area">
+        <header class="planning-section-header">
+          <div>
+            <p class="eyebrow">当前正在编辑</p>
+            <h2>{{ planNames[draft.document.kind] }}</h2>
+          </div>
+          <span class="planning-scope">{{
+            draft.document.title || "尚未命名"
+          }}</span>
+        </header>
+        <p class="muted">
           引用小说设置第{{ draft.document.settings_revision }}版，{{
             draft.document.inputs?.length ?? 0
           }}项资料与规划依据。{{ draft.reason }}
         </p>
-        <fieldset :disabled="locked">
-          <legend>本次采用的参考资料</legend>
-          <label v-for="source in overview?.sources" :key="source.id"
-            ><input v-model="sources" type="checkbox" :value="source.id" />{{
-              source.name
-            }}</label
-          >
-          <p v-if="!overview?.sources.length">
-            尚无已采用的参考资料。可先在“管理本书资料”中导入并确认。
-          </p>
-          <p v-if="missingSources.length">
-            有{{ missingSources.length }}项旧版本来源当前不可用。<button
-              type="button"
-              @click="
-                sources = sources.filter((id) => !missingSources.includes(id))
-              "
-            >
-              移除失效来源，重新选择
-            </button>
-          </p>
-          <button type="button" @click="refreshBasis">
-            更新并核对规划依据
-          </button>
-          <p>
-            更新只改变引用版本，不替你重写内容。请检查改稿与最新世界、资料和上游规划是否一致。
-          </p>
-        </fieldset>
-        <form @submit.prevent="prepare">
+        <details class="planning-basis" data-testid="plan-basis">
+          <summary>规划依据与参考资料</summary>
           <fieldset :disabled="locked">
-            <label
-              v-for="field in planFields.filter((f) =>
-                f.kinds.includes(draft!.document.kind),
-              )"
-              :key="field.key"
-              >{{ field.label
-              }}<textarea
-                v-model="draft.document[field.key]"
-                :rows="field.key === 'title' ? 1 : 3"
-                maxlength="20000"
-              />
-            </label>
+            <legend>本次采用的参考资料</legend>
+            <label v-for="source in overview?.sources" :key="source.id"
+              ><input v-model="sources" type="checkbox" :value="source.id" />{{
+                source.name
+              }}</label
+            >
+            <p v-if="!overview?.sources.length">
+              尚无已采用的参考资料。可先在“管理本书资料”中导入并确认。
+            </p>
+            <p v-if="missingSources.length">
+              有{{ missingSources.length }}项旧版本来源当前不可用。<button
+                class="quiet"
+                type="button"
+                @click="
+                  sources = sources.filter((id) => !missingSources.includes(id))
+                "
+              >
+                移除失效来源，重新选择
+              </button>
+            </p>
+            <button class="quiet" type="button" @click="refreshBasis">
+              更新并核对规划依据
+            </button>
+            <p>
+              更新只改变引用版本，不替你重写内容。请检查改稿与最新世界、资料和上游规划是否一致。
+            </p>
+          </fieldset>
+        </details>
+        <p
+          v-if="sourceSelectionChanged || missingSources.length"
+          class="notice"
+        >
+          参考资料有待核对的变化，请展开“规划依据与参考资料”处理后再继续。
+        </p>
+        <form @submit.prevent="prepare">
+          <fieldset class="planning-editor" :disabled="locked">
+            <details
+              v-for="group in fieldGroups"
+              :key="`${draft.resource.id}-${group.id}`"
+              class="planning-field-group"
+              :open="group.id === 'core'"
+            >
+              <summary>{{ group.title }}</summary>
+              <p class="muted">{{ group.description }}</p>
+              <div class="planning-fields">
+                <label v-for="field in group.fields" :key="field.key"
+                  >{{ field.label
+                  }}<textarea
+                    v-model="draft.document[field.key]"
+                    :rows="field.key === 'title' ? 1 : 3"
+                    maxlength="20000"
+                  />
+                </label>
+              </div>
+            </details>
             <template v-if="draft.document.kind === 'book'">
               <h3>全书卷安排（顺序可调整）</h3>
               <p>每卷需完成并确认章节安排，之后才能确认整个全书大纲。</p>
@@ -797,21 +887,25 @@ onBeforeUnmount(() => {
                 class="plan-item"
                 :aria-label="`第${index + 1}卷安排`"
               >
+                <h4>第{{ index + 1 }}卷</h4>
                 <label>分卷标题<input v-model="volume.title" /></label
                 ><label>分卷摘要<textarea v-model="volume.summary" /></label>
                 <div class="actions">
                   <button
+                    class="quiet"
                     type="button"
                     @click="open('volume', volume.id, volume.title)"
                   >
                     编排本卷章节</button
                   ><button
+                    class="quiet"
                     type="button"
                     :disabled="index === 0"
                     @click="move(draft.document.volumes, index, -1)"
                   >
                     上移此卷</button
                   ><button
+                    class="quiet"
                     type="button"
                     :disabled="
                       index === (draft.document.volumes?.length ?? 0) - 1
@@ -820,6 +914,7 @@ onBeforeUnmount(() => {
                   >
                     下移此卷</button
                   ><button
+                    class="quiet"
                     type="button"
                     @click="draft.document.volumes?.splice(index, 1)"
                   >
@@ -827,27 +922,35 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </article>
-              <button type="button" @click="addVolume">添加一卷</button>
+              <button class="quiet" type="button" @click="addVolume">
+                添加一卷
+              </button>
             </template>
             <template v-if="draft.document.kind === 'volume'">
               <h3>本卷暂定章节</h3>
-              <article
+              <details
                 v-for="(chapter, index) in draft.document.chapters"
                 :key="chapter.id"
                 class="plan-item"
+                :open="index === 0"
                 :aria-label="`第${index + 1}章安排`"
               >
-                <h4>第{{ index + 1 }}章</h4>
-                <label v-for="field in chapterFields" :key="field.key"
-                  >{{ field.label
-                  }}<textarea
-                    v-model="chapter[field.key]"
-                    rows="2"
-                    maxlength="20000"
-                  />
-                </label>
+                <summary>
+                  第{{ index + 1 }}章 · {{ chapter.title || "待填写标题" }}
+                </summary>
+                <div class="planning-fields">
+                  <label v-for="field in chapterFields" :key="field.key"
+                    >{{ field.label
+                    }}<textarea
+                      v-model="chapter[field.key]"
+                      rows="2"
+                      maxlength="20000"
+                    />
+                  </label>
+                </div>
                 <div class="actions">
                   <button
+                    class="quiet"
                     type="button"
                     :disabled="overview?.stage !== 'DETAIL_PLANNING'"
                     @click="
@@ -856,12 +959,14 @@ onBeforeUnmount(() => {
                   >
                     完善本章细纲</button
                   ><button
+                    class="quiet"
                     type="button"
                     :disabled="index === 0"
                     @click="move(draft.document.chapters, index, -1)"
                   >
                     上移此章</button
                   ><button
+                    class="quiet"
                     type="button"
                     :disabled="
                       index === (draft.document.chapters?.length ?? 0) - 1
@@ -870,15 +975,22 @@ onBeforeUnmount(() => {
                   >
                     下移此章</button
                   ><button
+                    class="quiet"
                     type="button"
                     @click="draft.document.chapters?.splice(index, 1)"
                   >
                     移出本版章节安排
                   </button>
                 </div>
-              </article>
-              <button type="button" @click="addChapter">添加一章</button
-              ><button type="button" @click="open('book')">返回全书安排</button>
+              </details>
+              <div class="actions">
+                <button class="quiet" type="button" @click="addChapter">
+                  添加一章
+                </button>
+                <button class="quiet" type="button" @click="open('book')">
+                  返回全书安排
+                </button>
+              </div>
               <label
                 >已有章稿编号（从长稿导入记录复制）<input
                   v-model="existingChapterId"
@@ -887,6 +999,7 @@ onBeforeUnmount(() => {
                   placeholder="粘贴32位章节编号"
               /></label>
               <button
+                class="quiet"
                 type="button"
                 :disabled="locked || !existingChapterId"
                 @click="attachExistingChapter"
@@ -903,35 +1016,43 @@ onBeforeUnmount(() => {
                   book.setup.chapter_max
                 }}字；以全部场景字数合计核对。
               </p>
-              <article
+              <details
                 v-for="(scene, index) in draft.document.scenes"
                 :key="scene.id"
                 class="plan-item"
+                :open="index === 0"
                 :aria-label="`场景${index + 1}`"
               >
-                <h4>场景{{ index + 1 }}</h4>
-                <label v-for="field in sceneFields" :key="field.key"
-                  >{{ field.label
-                  }}<textarea
-                    v-model="scene[field.key]"
-                    rows="2"
-                    maxlength="20000"
-                  /></label
-                ><label
-                  >预计字数<input
-                    v-model.number="scene.words"
-                    type="number"
-                    min="0"
-                    max="50000"
-                /></label>
+                <summary>
+                  场景{{ index + 1 }} · {{ scene.place || "待填写地点" }} ·
+                  {{ scene.words }}字
+                </summary>
+                <div class="planning-fields">
+                  <label v-for="field in sceneFields" :key="field.key"
+                    >{{ field.label
+                    }}<textarea
+                      v-model="scene[field.key]"
+                      rows="2"
+                      maxlength="20000"
+                    /></label
+                  ><label
+                    >预计字数<input
+                      v-model.number="scene.words"
+                      type="number"
+                      min="0"
+                      max="50000"
+                  /></label>
+                </div>
                 <div class="actions">
                   <button
+                    class="quiet"
                     type="button"
                     :disabled="index === 0"
                     @click="move(draft.document.scenes, index, -1)"
                   >
                     上移场景</button
                   ><button
+                    class="quiet"
                     type="button"
                     :disabled="
                       index === (draft.document.scenes?.length ?? 0) - 1
@@ -940,33 +1061,44 @@ onBeforeUnmount(() => {
                   >
                     下移场景</button
                   ><button
+                    class="quiet"
                     type="button"
                     @click="draft.document.scenes?.splice(index, 1)"
                   >
                     移出本版场景
                   </button>
                 </div>
-              </article>
-              <button type="button" @click="addScene">添加场景</button>
+              </details>
+              <button class="quiet" type="button" @click="addScene">
+                添加场景
+              </button>
             </template>
             <div class="actions">
-              <button v-if="canEdit" type="submit">查看规划候选</button
-              ><button
-                v-if="draft.published && canEdit"
-                type="button"
-                @click="loadPublished"
-              >
+              <button v-if="canEdit" type="submit">查看规划候选</button>
+            </div>
+            <p class="muted">
+              暂存只保留私人修改。查看候选并明确确认后，才会成为后续写作依据。
+            </p>
+            <details
+              v-if="draft.published && canEdit"
+              class="planning-secondary"
+            >
+              <summary>重新载入已采用的规划</summary>
+              <p>
+                此操作会用当前正式版替换本页私人修改；仍需重新核对并确认才会采用新版本。
+              </p>
+              <button class="quiet" type="button" @click="loadPublished">
                 放弃私人修改，载入当前正式版
               </button>
-            </div>
+            </details>
           </fieldset>
         </form>
       </section>
-      <details class="panel">
+      <details class="panel planning-history">
         <summary>规划版本与待确认候选（{{ history.length }}）</summary>
         <ul>
           <li v-for="item in history" :key="item.id">
-            <button :disabled="busy" @click="inspect(item)">
+            <button class="quiet" :disabled="busy" @click="inspect(item)">
               {{
                 item.status === "PUBLISHED"
                   ? "已采用版本"
@@ -978,25 +1110,36 @@ onBeforeUnmount(() => {
             </button>
           </li>
         </ul>
+        <p v-if="!history.length" class="muted">
+          尚无已采用版本或待确认候选。完成本版后，可先查看规划候选。
+        </p>
       </details>
     </template>
   </section>
 </template>
 
 <style scoped>
-.novel-planning {
-  max-width: 1100px;
-  margin: auto;
-}
-.planning-header,
 .actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
-.planning-header {
+.planning-section-header {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px 24px;
+  flex-wrap: wrap;
+}
+.planning-section-header h2 {
+  margin-bottom: 8px;
+}
+.planning-scope {
+  max-width: 42ch;
+  color: #5d6e63;
+  font-size: 14px;
+  overflow-wrap: anywhere;
 }
 .panel {
   margin-top: 18px;
@@ -1006,6 +1149,39 @@ fieldset {
   gap: 14px;
   margin: 14px 0;
   min-width: 0;
+}
+.planning-editor {
+  border: 0;
+  padding: 0;
+}
+.planning-basis,
+.planning-field-group,
+.planning-secondary {
+  border: 1px solid #d7ded5;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fafaf6;
+}
+.planning-basis fieldset {
+  padding: 12px 0 0;
+  border: 0;
+}
+.planning-fields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.planning-tools {
+  margin: 8px 0 16px;
+}
+.planning-secondary p {
+  color: #5d6e63;
+  font-size: 14px;
+}
+.planning-history ul {
+  display: grid;
+  gap: 10px;
+  padding-left: 20px;
 }
 label {
   display: grid;
@@ -1021,10 +1197,22 @@ input:not([type="checkbox"]) {
   box-sizing: border-box;
 }
 .plan-item {
-  border: 1px solid #dce1e7;
+  border: 1px solid #d7ded5;
   border-radius: 8px;
   padding: 16px;
+  min-width: 0;
+}
+article.plan-item {
   display: grid;
   gap: 12px;
+}
+.plan-item[open] > summary {
+  margin-bottom: 16px;
+}
+.plan-item > .actions {
+  margin-top: 16px;
+}
+.plan-item h4 {
+  margin: 0;
 }
 </style>

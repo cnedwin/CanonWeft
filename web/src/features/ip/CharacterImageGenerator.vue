@@ -107,7 +107,11 @@ async function useSuggestion() {
     if (alive && ticket === epoch) busy.value = false;
   }
 }
-const emit = defineEmits<{ saved: []; blocking: [value: boolean] }>();
+const emit = defineEmits<{
+  saved: [];
+  blocking: [value: boolean];
+  attention: [count: number];
+}>();
 function targetIdentity(value?: NovelImageTarget) {
   return JSON.stringify(
     value && [
@@ -147,7 +151,7 @@ interface Task {
     };
   };
   output?: { image?: { import_id: string } };
-  call?: { charged_micros: number; reserved_micros: number };
+  call?: { state?: string; charged_micros: number; reserved_micros: number };
 }
 const options = ref<Option[]>([]),
   tasks = ref<Task[]>([]),
@@ -155,6 +159,16 @@ const options = ref<Option[]>([]),
   runtime = ref(false),
   busy = ref(false),
   error = ref("");
+const attentionCount = computed(() => {
+  const known = new Map(tasks.value.map((task) => [task.id, task]));
+  if (selected.value) known.set(selected.value.id, selected.value);
+  return [...known.values()].filter(
+    (task) =>
+      (task.state === "UNKNOWN" || task.call?.state === "UNKNOWN") &&
+      task.call?.state !== "RECONCILED",
+  ).length;
+});
+watch(attentionCount, (count) => emit("attention", count));
 const look = ref("日常造型"),
   instructions = ref(""),
   references = ref<string[]>([]),
@@ -256,6 +270,7 @@ async function refresh() {
       selected.value = value;
       if (newlyDone) emit("saved");
     }
+    emit("attention", attentionCount.value);
     schedule();
   } catch (e) {
     if (alive && ticket === epoch) error.value = message(e);
@@ -633,8 +648,15 @@ function revise() {
           }}</span
         >
       </p>
-      <p v-if="selected.state === 'UNKNOWN'">
+      <p
+        v-if="
+          selected.state === 'UNKNOWN' && selected.call?.state !== 'RECONCILED'
+        "
+      >
         请求结果或用量尚不明确，保留费用占用，不自动重发。请先核对服务商回执。
+      </p>
+      <p v-else-if="selected.state === 'UNKNOWN'">
+        生成结果仍未知；费用已按账单核对。
       </p>
       <p v-if="!runtime && selected.state === 'PREPARED'">
         任务已保存；任务执行服务就绪后可以开始。

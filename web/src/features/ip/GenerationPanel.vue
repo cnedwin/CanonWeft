@@ -45,6 +45,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   expired: [];
   blocking: [boolean];
+  attention: [count: number];
   prepared: [string];
   planningSuggestion: [PlanningSuggestion];
   characterSuggestion: [CharacterDesignSuggestion];
@@ -402,6 +403,17 @@ watch([prompt, selected, maxOutput, contextRef, changePlanRef, trial], () => {
 watch([dirty, busy, decisionDraftDirty], () =>
   emit("blocking", dirty.value || busy.value || decisionDraftDirty.value),
 );
+const attentionCount = computed(
+  () =>
+    new Set(
+      [...tasks.value, ...(current.value ? [current.value] : [])]
+        .filter(
+          (task) => task.state === "UNKNOWN" || task.call?.state === "UNKNOWN",
+        )
+        .map((task) => task.id),
+    ).size,
+);
+watch(attentionCount, (count) => emit("attention", count), { immediate: true });
 function fail(e: unknown) {
   error.value = message(e);
   if (e instanceof APIError && e.status === 401) emit("expired");

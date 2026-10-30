@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
+import { openIPSection } from "./ip-edit-helper";
 
 test("跨分支发布先对照完整内容，丢失回复保留同一发布请求（受控发布接口）", async ({
   page,
@@ -63,6 +64,7 @@ test("跨分支发布先对照完整内容，丢失回复保留同一发布请�
   await page.getByRole("button", { name: p.name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库", exact: true }).click();
   await page.getByRole("button", { name: "小说正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("跨分支一起发布", { exact: true }).click();
   const panel = page.getByRole("group", { name: "跨分支发布选择" });
   for (let i = 0; i < branches.length; i++) {
@@ -180,6 +182,7 @@ test("恢复的联合发布历史可重试查看保存内容，版本不符时�
   await page.getByRole("button", { name: project.name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库", exact: true }).click();
   await page.getByRole("button", { name: "恢复的小说", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("联合发布历史", { exact: true }).click();
   const panel = page.getByRole("region", {
     name: "联合发布历史记录",

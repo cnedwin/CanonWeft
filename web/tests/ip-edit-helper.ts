@@ -1,7 +1,18 @@
 import { expect, type Page } from "@playwright/test";
 
+export async function openIPSection(
+  page: Page,
+  name: "角色资料" | "设定草稿" | "版本与分支" | "知识与任务",
+) {
+  await page
+    .getByRole("navigation", { name: "设定库工作分区", exact: true })
+    .getByRole("button", { name, exact: true })
+    .click();
+}
+
 // Drive the same explicit per-change explanation form used by people.
 export async function saveReasonedCandidate(page: Page) {
+  await openIPSection(page, "设定草稿");
   const inspect = page.getByRole("button", {
     name: "检查变更并保存候选",
     exact: true,

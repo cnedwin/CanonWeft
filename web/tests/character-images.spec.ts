@@ -102,6 +102,10 @@ test("角色图片保留上传重试，按造型提示缺图，刷新后仍能�
     await page
       .getByRole("button", { name: "打开角色 林舟 · hero", exact: true })
       .click();
+    await page
+      .getByRole("navigation", { name: "角色详情分区" })
+      .getByRole("button", { name: "图片与三视图", exact: true })
+      .click();
   }
   await openLibrary();
   const gallery = page.getByRole("region", { name: "角色视觉资料" });
@@ -193,9 +197,17 @@ test("角色图片保留上传重试，按造型提示缺图，刷新后仍能�
     gallery.getByRole("dialog", { name: "图片大图" }).getByRole("img"),
   ).toHaveAttribute("src", /alternate-front\/file/);
   await gallery.getByRole("button", { name: "关闭大图", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "角色详情分区" })
+    .getByRole("button", { name: "基础与属性", exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: "阵营与能力", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "角色详情分区" })
+    .getByRole("button", { name: "图片与三视图", exact: true })
+    .click();
   await gallery
     .getByLabel("查看造型", { exact: true })
     .selectOption("战斗盔甲");

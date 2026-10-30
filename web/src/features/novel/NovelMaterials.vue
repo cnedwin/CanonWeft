@@ -57,47 +57,80 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="novel-materials">
-    <header class="materials-header">
+  <section class="novel-materials author-subpage" :aria-busy="loading">
+    <header class="materials-header author-page-header">
       <div>
         <p class="eyebrow">{{ book.setup.title }}</p>
         <h1>本书创作资料</h1>
-        <p>导入要求、设定、原稿或专业参考，核对后再采用。</p>
+        <p class="author-page-description">
+          把要求、设定、原稿与专业参考整理成本书可引用的资料，核对后再采用。
+        </p>
       </div>
       <button
+        class="quiet"
         :disabled="blocked || generationBlocked || loading"
         @click="emit('close')"
       >
         {{ returnLabel || "返回小说工作台" }}
       </button>
     </header>
-    <p class="muted">
-      原文件、解析结果和你的修改分别保留。未来剧情与故事规划请选择“项目工作资料”，
-      避免成为角色已知事实。资料采用不等于小说规划已经确认，也不会自动生成正文。
+    <ol class="materials-workflow" aria-label="本书资料整理流程">
+      <li>
+        <strong>1 · 导入资料</strong
+        ><span>上传原文件，保留来源与解析结果。</span>
+      </li>
+      <li>
+        <strong>2 · 核对内容</strong
+        ><span>修订解析文字，检查候选与引用范围。</span>
+      </li>
+      <li>
+        <strong>3 · 采用并发布</strong
+        ><span>明确采用核对过的版本，供后续创作引用。</span>
+      </li>
+    </ol>
+    <p class="author-status">
+      未来剧情与故事规划请选择“项目工作资料”，避免成为角色已知事实。
     </p>
+    <details class="materials-guidance">
+      <summary>资料保留与后续写作说明</summary>
+      <p class="muted">
+        原文件、解析结果和你的修改分别保留。资料采用不等于小说规划已经确认，也不会自动生成正文。
+      </p>
+    </details>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
-    <button v-if="error" :disabled="loading || blocked" @click="refresh">
+    <button
+      v-if="error"
+      class="quiet"
+      :disabled="loading || blocked"
+      @click="refresh"
+    >
       重试读取本书资料
     </button>
-    <p v-if="loading" role="status">正在读取本书资料…</p>
-    <BundlePanel
+    <p v-if="loading" role="status" class="author-status">正在读取本书资料…</p>
+    <section
       v-if="branch"
-      ref="bundle"
-      :key="branch.id"
-      :project="project"
-      :actor="actor"
-      :branch="branch"
-      :candidates="candidates"
-      :blocked="loading"
-      initially-open-imports
-      @blocking="blocked = $event"
-      @expired="emit('expired')"
-      @published="refresh"
-      @change-plan="useRepairPlan"
-    />
+      class="author-work-area materials-content"
+      aria-label="资料导入与核对"
+    >
+      <BundlePanel
+        ref="bundle"
+        :key="branch.id"
+        :project="project"
+        :actor="actor"
+        :branch="branch"
+        :candidates="candidates"
+        :blocked="loading"
+        initially-open-imports
+        @blocking="blocked = $event"
+        @expired="emit('expired')"
+        @published="refresh"
+        @change-plan="useRepairPlan"
+      />
+    </section>
     <section
       v-if="branch && repairPlan"
       ref="repairSection"
+      class="author-work-area"
       tabindex="-1"
       aria-label="资料变更修复"
     >
@@ -115,15 +148,48 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.novel-materials {
-  max-width: 1100px;
-  margin: auto;
+.materials-workflow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
 }
-.materials-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  align-items: center;
-  flex-wrap: wrap;
+.materials-workflow li {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #d7ded5;
+  border-radius: 8px;
+  background: #fafaf6;
+}
+.materials-workflow span {
+  color: #5d6e63;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.materials-guidance {
+  padding: 10px 0;
+}
+.materials-content :deep(.bundle-panel) {
+  margin-top: 0;
+}
+.materials-content :deep(.bundle-panel > details) {
+  padding: 12px 0;
+  border-top: 1px solid #d7ded5;
+}
+.materials-content :deep(.bundle-panel > .create button) {
+  background: transparent;
+  color: #52665d;
+  border: 1px solid #d7ded5;
+}
+.materials-content :deep(.bundle-panel > .create button:hover) {
+  background: #edf1e6;
+}
+@media (max-width: 700px) {
+  .materials-workflow {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

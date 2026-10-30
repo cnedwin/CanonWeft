@@ -59,6 +59,15 @@ const novelReads = useBoundedReads({
 let novelReadSequence = 0;
 const branches = ref<Branch[]>([]);
 const current = ref<Branch | null>(null);
+const activeSection = ref<"characters" | "draft" | "versions" | "tools">(
+  props.initialBranchId ? "characters" : "versions",
+);
+const sections = [
+  { id: "characters", label: "角色资料" },
+  { id: "draft", label: "设定草稿" },
+  { id: "versions", label: "版本与分支" },
+  { id: "tools", label: "知识与任务" },
+] as const;
 const candidates = ref<Candidate[]>([]);
 const usableCandidates = computed(() =>
   candidates.value.filter((c) => !c.retention),
@@ -112,6 +121,20 @@ const promotionBlocking = ref(false);
 const generationBlocking = ref(false);
 const memoryBlocking = ref(false);
 const characterBlocking = ref(false);
+const imageAttention = ref(0);
+const generationAttention = ref(0);
+const generationSection = ref<HTMLElement | null>(null);
+async function showGenerationTasks() {
+  activeSection.value = "tools";
+  await nextTick();
+  generationSection.value?.scrollIntoView({ block: "start" });
+  generationSection.value?.focus({ preventScroll: true });
+}
+async function showImageTasks() {
+  activeSection.value = "characters";
+  await nextTick();
+  await characterLibrary.value?.showImageTasks();
+}
 const ownLeaveBlocked = computed(
   () =>
     busy.value ||
@@ -288,10 +311,12 @@ async function loadBranch(id: string) {
 }
 async function choose(id: string) {
   await perform(() => loadBranch(id));
+  if (current.value?.id === id) activeSection.value = "characters";
 }
 async function useChangePlan(value: { id: string; branch: string }) {
   if (current.value?.id === value.branch) {
     selectedChangePlan.value = value;
+    activeSection.value = "tools";
     return;
   }
   if (leaveBlocked.value) {
@@ -301,6 +326,7 @@ async function useChangePlan(value: { id: string; branch: string }) {
   await perform(async () => {
     await loadBranch(value.branch);
     selectedChangePlan.value = value;
+    activeSection.value = "tools";
   });
 }
 function canOpenNovelResource() {
@@ -388,6 +414,7 @@ async function createBranch() {
     branchName.value = "";
     await refreshBranches();
     await loadBranch(branch.id);
+    activeSection.value = "draft";
     notice.value = parent
       ? "改编分支已从固定的正式版本建立"
       : "独立分支已建立，可以开始整理设定";
@@ -403,7 +430,9 @@ function addEntity() {
   });
   edited();
 }
-function focusAssertion(id: string) {
+async function focusAssertion(id: string) {
+  activeSection.value = "draft";
+  await nextTick();
   const editor = document.getElementById(`ip-assertion-${id}`);
   editor?.scrollIntoView({ behavior: "smooth", block: "center" });
   editor
@@ -495,6 +524,7 @@ async function save() {
     ).items;
     dirty.value = false;
     notice.value = "候选已保存，正式设定尚未改变。请检查后确认采用。";
+    activeSection.value = "versions";
   });
 }
 function revise(candidate: Candidate) {
@@ -511,6 +541,7 @@ function revise(candidate: Candidate) {
       ]),
   );
   edited();
+  activeSection.value = "draft";
   notice.value = "候选内容已载入编辑区；修改后会保存为另一个候选。";
 }
 async function advance(
@@ -708,19 +739,60 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="workspace ip-workspace">
-    <div class="intro">
+  <main class="workspace ip-workspace author-subpage">
+    <div class="intro author-page-header">
       <div>
         <p class="eyebrow">{{ project.name }} / IP LIBRARY</p>
         <h1>共享设定库</h1>
-        <p class="muted">
-          正史与改编分别维护。角色身份、事实和知情时间随版本保留。
+        <p class="muted author-page-description">
+          先整理角色和世界设定，再核对候选版本。修改自动暂存，采用与发布分别确认。
         </p>
       </div>
       <button class="quiet" :disabled="leaveBlocked" @click="emit('close')">
         {{ returnLabel || "返回项目书架" }}
       </button>
     </div>
+    <nav class="author-page-nav" aria-label="设定库工作分区">
+      <button
+        v-for="section in sections"
+        :key="section.id"
+        type="button"
+        class="quiet"
+        :aria-pressed="activeSection === section.id"
+        :disabled="
+          (!current && section.id !== 'versions') ||
+          (section.id === 'draft' && !canEdit)
+        "
+        @click="activeSection = section.id"
+      >
+        {{ section.label }}
+      </button>
+    </nav>
+    <p v-if="current" class="author-status">
+      {{ current.name }} · {{ current.head ? "已有正式版本" : "尚未发布" }}
+      <span v-if="characterBlocking"> · 角色资料有待加入的属性或图片输入</span>
+      <span v-if="bundleBlocking || promotionBlocking || semanticBlocking">
+        · 版本与分支中有未完成的操作
+      </span>
+      <span v-if="generationBlocking || memoryBlocking">
+        · 知识与任务中有未完成的输入或操作
+      </span>
+    </p>
+    <p v-if="generationAttention" class="author-status" role="status">
+      已读取的 AI 任务中有
+      {{ generationAttention }}
+      项结果未知。请查看任务结果与账单核对状态，系统不会自动重发。
+      <button type="button" class="quiet" @click="showGenerationTasks">
+        查看 AI 任务
+      </button>
+    </p>
+    <p v-if="imageAttention" class="author-status" role="status">
+      已读取的图片任务中有
+      {{ imageAttention }} 项结果或用量尚不明确，费用需核对。系统不会自动重发。
+      <button type="button" class="quiet" @click="showImageTasks">
+        查看图片任务
+      </button>
+    </p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <p v-if="dirty && draftSaved" class="notice">草稿已自动暂存，尚未采用</p>
@@ -735,7 +807,10 @@ onUnmounted(() => {
         重试暂存
       </button>
     </p>
-    <section class="panel branch-panel">
+    <section
+      v-show="activeSection === 'versions'"
+      class="panel branch-panel author-work-area"
+    >
       <h2>正史与改编分支</h2>
       <nav class="actions" aria-label="设定分支">
         <button
@@ -772,7 +847,11 @@ onUnmounted(() => {
       </form>
     </section>
     <template v-if="current">
-      <section v-if="current.parent_id" class="panel">
+      <section
+        v-if="current.parent_id"
+        v-show="activeSection === 'versions'"
+        class="panel"
+      >
         <h2>与上游比较</h2>
         <p class="muted">
           比较分支建立时的基础版本、上游当前版本和本分支版本。合并只生成待确认候选。
@@ -851,6 +930,7 @@ onUnmounted(() => {
         </template>
       </section>
       <CharacterLibrary
+        v-show="activeSection === 'characters'"
         ref="characterLibrary"
         :key="current.id"
         :project-id="project.id"
@@ -868,8 +948,13 @@ onUnmounted(() => {
         @edited="edited"
         @edit-assertion="focusAssertion"
         @blocking="characterBlocking = $event"
+        @attention="imageAttention = $event"
       />
-      <section class="panel published-panel" data-testid="published-snapshot">
+      <section
+        v-show="activeSection === 'versions'"
+        class="panel published-panel"
+        data-testid="published-snapshot"
+      >
         <h2>{{ current.name }} · 正式设定</h2>
         <p class="muted">
           {{ current.head ? `已发布 · ${current.head.slice(0, 8)}` : "尚未发布"
@@ -926,10 +1011,14 @@ onUnmounted(() => {
           {{ event.time }} · {{ event.name }}：{{ event.description }}
         </p>
       </section>
-      <section v-if="canEdit" class="panel draft-panel">
+      <section
+        v-if="canEdit"
+        v-show="activeSection === 'draft'"
+        class="panel draft-panel author-work-area"
+      >
         <h2>编辑下一个版本</h2>
         <p class="muted">
-          事实、人物信念、对外陈述分别记录。时间使用故事中的顺序位置，0
+          在这里维护实体、事实、人物信念和世界规则。时间使用故事中的顺序位置，0
           表示故事开始之前。
         </p>
         <form @submit.prevent="save" @input="edited" @change="edited">
@@ -1220,83 +1309,95 @@ onUnmounted(() => {
           </div>
         </form>
       </section>
-      <PromotionPanel
-        v-if="canEdit"
-        :key="current.id + '-promotion'"
-        :project="project.id"
-        :branch="current"
-        :branches="branches"
-        :draft="branchActions.promotion"
-        :blocked="busy || savingDraft || bundleBlocking"
-        @created="refreshPublished"
-        @blocking="promotionBlocking = $event"
-        @draft="savePromotionDraft"
-      />
-      <BundlePanel
-        ref="bundlePanel"
-        :key="current.id"
-        :project="project"
-        :actor="actor"
-        :branch="current"
-        :candidates="usableCandidates"
-        :novel-navigation="
-          novelNavigation &&
-          (!initialBranchId || current.id === initialBranchId)
-        "
-        :blocked="
-          busy || savingDraft || memoryBlocking || !!novelNavigationBusy
-        "
-        @published="refreshPublished"
-        @change-plan="useChangePlan"
-        @edit-resource="editNovelResource"
-        @blocking="bundleBlocking = $event"
-        @expired="emit('expired')"
-      />
-      <MemoryPanel
-        :key="current.id + '-memory-' + actor.id"
-        :project="project"
-        :actor="actor"
-        :branch="current"
-        :blocked="busy || savingDraft || bundleBlocking"
-        :publication-revision="publicationRevision"
-        @blocking="memoryBlocking = $event"
-        @expired="emit('expired')"
-      />
-      <KnowledgePanel
-        :key="current.id + '-knowledge'"
-        :project="project"
-        :actor="actor"
-        :branch="current"
-        :blocked="busy || savingDraft || bundleBlocking"
-        :publication-revision="publicationRevision"
-        @use="selectedContext = $event"
-        @expired="emit('expired')"
-      />
-      <GenerationPanel
-        :key="current.id + '-generation'"
-        :project="project"
-        :actor="actor"
-        :branch="current"
-        :change-plan="
-          selectedChangePlan?.branch === current.id ? selectedChangePlan : null
-        "
-        :context="
-          selectedContext?.branch === current.id ? selectedContext : null
-        "
-        @expired="emit('expired')"
-        @blocking="generationBlocking = $event"
-        @prepared="bundlePanel?.refreshAfterPrepared()"
-      />
-      <TaskPanel
-        :key="current.id + '-tasks'"
-        :project="project"
-        :actor="actor"
-        :branch="current"
-        :candidates="usableCandidates"
-        :blocked="busy || savingDraft"
-        @expired="emit('expired')"
-      />
-      <section class="panel history-panel">
+      <div v-show="activeSection === 'versions'" class="author-work-area">
+        <PromotionPanel
+          v-if="canEdit"
+          :key="current.id + '-promotion'"
+          :project="project.id"
+          :branch="current"
+          :branches="branches"
+          :draft="branchActions.promotion"
+          :blocked="busy || savingDraft || bundleBlocking"
+          @created="refreshPublished"
+          @blocking="promotionBlocking = $event"
+          @draft="savePromotionDraft"
+        />
+        <BundlePanel
+          ref="bundlePanel"
+          :key="current.id"
+          :project="project"
+          :actor="actor"
+          :branch="current"
+          :candidates="usableCandidates"
+          :novel-navigation="
+            novelNavigation &&
+            (!initialBranchId || current.id === initialBranchId)
+          "
+          :blocked="
+            busy || savingDraft || memoryBlocking || !!novelNavigationBusy
+          "
+          @published="refreshPublished"
+          @change-plan="useChangePlan"
+          @edit-resource="editNovelResource"
+          @blocking="bundleBlocking = $event"
+          @expired="emit('expired')"
+        />
+      </div>
+      <div v-show="activeSection === 'tools'" class="author-work-area">
+        <MemoryPanel
+          :key="current.id + '-memory-' + actor.id"
+          :project="project"
+          :actor="actor"
+          :branch="current"
+          :blocked="busy || savingDraft || bundleBlocking"
+          :publication-revision="publicationRevision"
+          @blocking="memoryBlocking = $event"
+          @expired="emit('expired')"
+        />
+        <KnowledgePanel
+          :key="current.id + '-knowledge'"
+          :project="project"
+          :actor="actor"
+          :branch="current"
+          :blocked="busy || savingDraft || bundleBlocking"
+          :publication-revision="publicationRevision"
+          @use="selectedContext = $event"
+          @expired="emit('expired')"
+        />
+        <section ref="generationSection" tabindex="-1" aria-label="AI 任务">
+          <GenerationPanel
+            @attention="generationAttention = $event"
+            :key="current.id + '-generation'"
+            :project="project"
+            :actor="actor"
+            :branch="current"
+            :change-plan="
+              selectedChangePlan?.branch === current.id
+                ? selectedChangePlan
+                : null
+            "
+            :context="
+              selectedContext?.branch === current.id ? selectedContext : null
+            "
+            @expired="emit('expired')"
+            @blocking="generationBlocking = $event"
+            @prepared="bundlePanel?.refreshAfterPrepared()"
+          />
+        </section>
+        <TaskPanel
+          :key="current.id + '-tasks'"
+          :project="project"
+          :actor="actor"
+          :branch="current"
+          :candidates="usableCandidates"
+          :blocked="busy || savingDraft"
+          @expired="emit('expired')"
+        />
+      </div>
+      <section
+        v-show="activeSection === 'versions'"
+        class="panel history-panel"
+      >
         <h2>候选与版本记录</h2>
         <template
           v-if="

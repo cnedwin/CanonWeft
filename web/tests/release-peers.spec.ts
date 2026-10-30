@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
+import { openIPSection } from "./ip-edit-helper";
 
 test("跨分支候选显示上游原文，明确选择改绑，重试不换输入且保留历史固定引用", async ({
   page,
@@ -121,6 +122,7 @@ test("跨分支候选显示上游原文，明确选择改绑，重试不换输�
   await page.getByRole("button", { name: project.name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库", exact: true }).click();
   await page.getByRole("button", { name: "改编", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("引用其他分支的新候选", { exact: true }).click();
   const panel = page.locator(".release-peer-panel");
   await panel.getByLabel("本分支候选", { exact: true }).selectOption(target.id);

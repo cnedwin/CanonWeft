@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
+import { openIPSection } from "./ip-edit-helper";
 
 test("修订草稿迟到回执不覆盖新输入，多标签页冲突保留两边内容", async ({
   page,
@@ -25,6 +26,7 @@ test("修订草稿迟到回执不覆盖新输入，多标签页冲突保留两�
     await target.getByRole("button", { name, exact: true }).click();
     await target.getByRole("button", { name: "打开设定库" }).click();
     await target.getByRole("button", { name: "正史", exact: true }).click();
+    await openIPSection(target, "版本与分支");
     await target.getByText("局部修订", { exact: true }).click();
     await expect(target.getByLabel("原文片段", { exact: true })).toBeEnabled();
   }
@@ -137,6 +139,7 @@ test("正文撤回保留后来创作，保存为待独立审查的新候选", as
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("局部修订", { exact: true }).click();
   await page.getByText("撤回已发布的正文改动", { exact: true }).click();
   await page
@@ -219,6 +222,7 @@ test("局部修订展示整组差异，保存后必须独立审查且保留旧�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("局部修订", { exact: true }).click();
   for (const resource of resources) {
     await page
@@ -236,6 +240,7 @@ test("局部修订展示整组差异，保存后必须独立审查且保留旧�
     await page.getByRole("button", { name, exact: true }).click();
     await page.getByRole("button", { name: "打开设定库" }).click();
     await page.getByRole("button", { name: "正史", exact: true }).click();
+    await openIPSection(page, "版本与分支");
     await page.getByText("局部修订", { exact: true }).click();
     await expect(page.getByLabel("原文片段", { exact: true })).toHaveValue(
       "旧城",
