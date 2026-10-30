@@ -1,5 +1,5 @@
 import { loginAsOwner } from "./owner-session";
-import { saveReasonedCandidate } from "./ip-edit-helper";
+import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 import { test, expect, type Page } from "@playwright/test";
 
 async function publishEdit(page: Page) {
@@ -45,9 +45,11 @@ test("改编冲突选择刷新保留，未独立审查不改变正式版本", as
   await page.getByLabel("实体简介").fill("改编中的少年守塔人");
   await publishEdit(page);
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "设定草稿");
   await page.getByLabel("实体简介").fill("正史中的隐退守塔人");
   await publishEdit(page);
   await page.getByRole("button", { name: "改编", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByRole("button", { name: "比较上游变化" }).click();
   await page.getByLabel("冲突处理").selectOption("local");
   await expect(
@@ -57,6 +59,7 @@ test("改编冲突选择刷新保留，未独立审查不改变正式版本", as
   await page.getByRole("button", { name: projectName, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "改编", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByRole("button", { name: "比较上游变化" }).click();
   await expect(page.getByLabel("冲突处理")).toHaveValue("local");
   await page.getByRole("button", { name: "保存合并候选" }).click();

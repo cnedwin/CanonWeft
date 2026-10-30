@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
+import { openIPSection } from "./ip-edit-helper";
 
 test("发布后自动登记真实影响，刷新查看不改写资料", async ({ page }) => {
   await loginAsOwner(page);
@@ -61,6 +62,7 @@ test("发布后自动登记真实影响，刷新查看不改写资料", async ({
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("依赖、冻结与变更影响", { exact: true }).click();
   await page
     .getByRole("button", { name: "刷新发布后的影响记录", exact: true })
@@ -211,6 +213,7 @@ test("处理记录区分候选与当前发布，刷新后可安全切到受影�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库", exact: true }).click();
   await page.getByRole("button", { name: "来源分支", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("依赖、冻结与变更影响", { exact: true }).click();
   await page.getByLabel("已保存的影响清单", { exact: true }).selectOption(id);
   await page

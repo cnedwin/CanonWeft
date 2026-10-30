@@ -25,8 +25,13 @@ const fs = require("node:fs/promises");
       })
       .click();
     await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "审稿与导出", exact: true })
+      .click();
+    await page
       .getByRole("button", { name: "整书与分卷导出", exact: true })
       .click();
+    await page.getByText("书籍信息与封面", { exact: true }).click();
     const choice = page.getByLabel("导出封面版本", { exact: true });
     await expect(choice.locator(`option[value="${cover}"]`)).toHaveCount(1);
     await expect(choice.locator(`option[value="${scene}"]`)).toHaveCount(0);

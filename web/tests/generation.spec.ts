@@ -1,5 +1,5 @@
 import { loginAsOwner } from "./owner-session";
-import { saveReasonedCandidate } from "./ip-edit-helper";
+import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 import { test, expect } from "@playwright/test";
 
 test("价格版本与生成估算可保存，付费关闭时执行被拒绝", async ({ page }) => {
@@ -80,6 +80,7 @@ test("价格版本与生成估算可保存，付费关闭时执行被拒绝", as
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
+  await openIPSection(page, "知识与任务");
   await page.getByRole("button", { name: "构建 / 更新检索索引" }).click();
   await expect(page.getByText("索引已就绪，共 0 个原文片段。")).toBeVisible();
   await page.getByLabel("要查找的线索").fill("规划世界的基础设定");
@@ -115,6 +116,7 @@ test("价格版本与生成估算可保存，付费关闭时执行被拒绝", as
   await expect(page.getByRole("alert")).toContainText("付费调用尚未开启");
   await page.getByRole("button", { name: "取消任务", exact: true }).click();
   await expect(page.locator(".generation-task")).toContainText("已取消");
+  await openIPSection(page, "设定草稿");
   await page.getByRole("button", { name: "新增角色或实体" }).click();
   await page.getByLabel("实体名称", { exact: true }).fill("林舟");
   await page.getByLabel("实体简介").fill("需要审查的新角色设定");

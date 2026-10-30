@@ -1,5 +1,5 @@
 import { loginAsOwner } from "./owner-session";
-import { saveReasonedCandidate } from "./ip-edit-helper";
+import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 import { test, expect } from "@playwright/test";
 test("职业功法结构、独立角色映射与发动条件可保存并验证", async ({ page }) => {
   await loginAsOwner(page);
@@ -56,6 +56,7 @@ test("职业功法结构、独立角色映射与发动条件可保存并验证",
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await expect(page.getByLabel("限制", { exact: true })).toHaveValue(
     "不能凭空生火",
   );
@@ -71,6 +72,7 @@ test("职业功法结构、独立角色映射与发动条件可保存并验证",
   await page.getByRole("button", { name: "确认采用此候选" }).first().click();
   await page.getByRole("button", { name: "发布此版本" }).first().click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await expect(page.getByTestId("published-snapshot")).not.toContainText(
     "返照草",
   );

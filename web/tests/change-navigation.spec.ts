@@ -444,6 +444,10 @@ async function impacts(page: Page) {
   await page
     .getByRole("button", { name: "编辑本书世界与角色", exact: true })
     .click();
+  await page
+    .getByRole("navigation", { name: "设定库工作分区" })
+    .getByRole("button", { name: "版本与分支", exact: true })
+    .click();
   await page.getByText("依赖、冻结与变更影响", { exact: true }).click();
   await page.getByLabel("已保存的影响清单").selectOption(planID);
   await page
@@ -599,7 +603,7 @@ test("返回后的原清单重查超时仍可离开，不取消或重发写请�
         .filter({ hasText: "超时" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "返回项目书架", exact: true }),
+      page.getByRole("button", { name: "返回本书工作区", exact: true }),
     ).toBeEnabled();
     expect(f.counts.writes).toHaveLength(0);
   } finally {

@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
+import { openIPSection } from "./ip-edit-helper";
 
 test("人工资料候选展示真实来源并可确认", async ({ page }) => {
   await loginAsOwner(page);
@@ -10,6 +11,7 @@ test("人工资料候选展示真实来源并可确认", async ({ page }) => {
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByLabel("资料名称", { exact: true }).fill("人工笔记");
   await page.getByRole("button", { name: "创建资料", exact: true }).click();
   await page
@@ -130,6 +132,7 @@ test("选择实际生成来源后改稿刷新仍保留血缘并阻止沿用旧�
         r.url().endsWith(`/projects/${project.id}/branches`),
     );
     await page.getByRole("button", { name: "创建分支", exact: true }).click();
+    await openIPSection(page, "版本与分支");
     const branch = await (await branched).json();
     const root = `/api/projects/${project.id}`;
     const prepared = await page.request.post(`${root}/generations`, {
@@ -198,6 +201,7 @@ test("选择实际生成来源后改稿刷新仍保留血缘并阻止沿用旧�
     await page.getByRole("button", { name, exact: true }).click();
     await page.getByRole("button", { name: "打开设定库" }).click();
     await page.getByRole("button", { name: "正史", exact: true }).click();
+    await openIPSection(page, "版本与分支");
     await page
       .getByRole("button", { name: "编辑 带来源资料", exact: true })
       .click();

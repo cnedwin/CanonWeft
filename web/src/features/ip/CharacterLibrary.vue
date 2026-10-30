@@ -30,11 +30,12 @@ const detailHeading = ref<HTMLHeadingElement | null>(null);
 function focusSearch() {
   searchInput.value?.focus();
 }
-defineExpose({ focusSearch });
+defineExpose({ focusSearch, showImageTasks });
 const emit = defineEmits<{
   edited: [];
   editAssertion: [id: string];
   blocking: [value: boolean];
+  attention: [count: number];
 }>();
 const selectionProblem = ref("");
 const arrowID = `character-arrow-${crypto.randomUUID()}`;
@@ -51,10 +52,25 @@ const at = computed(() =>
 );
 const page = ref(1);
 const selectedId = ref("");
+const activeDetail = ref<"profile" | "images" | "relations" | "records">(
+  "profile",
+);
+const detailSections = [
+  { id: "profile", label: "基础与属性" },
+  { id: "images", label: "图片与三视图" },
+  { id: "relations", label: "人物关系" },
+  { id: "records", label: "全部设定记录" },
+] as const;
+const availableDetailSections = computed(() =>
+  detailSections.filter(
+    (section) => section.id !== "images" || (props.projectId && props.branchId),
+  ),
+);
 const newField = ref("性格");
 const newValue = ref("");
 const newValueInput = ref<HTMLTextAreaElement | null>(null);
 const imageBlocking = ref(false);
+const imageAttention = ref<Record<string, number>>({});
 const portraits = ref<Record<string, string>>({});
 const portraitLoaded = ref<Record<string, boolean>>({});
 const characterList = computed(() =>
@@ -64,6 +80,13 @@ const characterList = computed(() =>
       (!props.visibleEntityIds || props.visibleEntityIds.includes(e.id)),
   ),
 );
+const imageAttentionCount = computed(() =>
+  characterList.value.reduce(
+    (total, entity) => total + (imageAttention.value[entity.id] ?? 0),
+    0,
+  ),
+);
+watch(imageAttentionCount, (count) => emit("attention", count));
 const facts = computed(() => characterFacts(props.snapshot, at.value));
 const facets = computed(() =>
   characterFacets.map((facet) => ({
@@ -200,6 +223,7 @@ watch([relationType, at], () => {
   relationPage.value = 1;
 });
 watch(selectedId, () => {
+  activeDetail.value = "profile";
   relationType.value = "";
   relationPage.value = 1;
   zoom.value = 1;
@@ -219,7 +243,21 @@ watch(
 watch([newValue, imageBlocking], ([value, images]) =>
   emit("blocking", !!value.trim() || images),
 );
-onUnmounted(() => emit("blocking", false));
+onUnmounted(() => {
+  emit("blocking", false);
+  emit("attention", 0);
+});
+async function showImageTasks() {
+  const id =
+    selectedId.value && imageAttention.value[selectedId.value]
+      ? selectedId.value
+      : characterList.value.find((entity) => imageAttention.value[entity.id])
+          ?.id;
+  if (!id) return;
+  select(id);
+  await nextTick();
+  if (selectedId.value === id) activeDetail.value = "images";
+}
 function select(id: string) {
   if (
     id !== selectedId.value &&
@@ -313,51 +351,70 @@ function chooseMissingField(name: string) {
           : "正在查看当前分支的正式角色设定。")
       }}
     </p>
-    <div class="library-controls">
+    <p v-if="imageAttentionCount" class="author-status" role="status">
+      已读取的图片任务中有
+      {{
+        imageAttentionCount
+      }}
+      项结果或用量尚不明确，费用需核对。保留已有占用，不自动重发。
+      <button type="button" class="quiet" @click="showImageTasks">
+        查看图片任务
+      </button>
+    </p>
+    <div class="library-search">
       <label
         >搜索角色<input
           ref="searchInput"
           v-model="query"
           type="search"
-          placeholder="姓名、别名、ID、职业或关键词；空格组合检索"
-      /></label>
-      <label
-        >使用状态筛选<select v-model="status">
-          <option value="all">全部角色</option>
-          <option value="active">正常使用</option>
-          <option value="disabled">已停用</option>
-        </select></label
-      >
-      <label
-        >关系与属性的故事位置<input
-          v-model.number="position"
-          type="number"
-          step="1"
+          placeholder="搜索姓名、别名、职业或关键词；空格可组合检索"
       /></label>
     </div>
-    <div class="library-controls">
-      <label v-for="facet in facets" :key="facet.key">
-        {{ facet.name }}筛选
-        <select
-          v-model="facetFilters[facet.key]"
-          :aria-label="`${facet.name}筛选`"
+    <details class="library-filter-panel">
+      <summary>筛选角色与故事位置 · 当前位置 {{ at }}</summary>
+      <div class="library-controls">
+        <label
+          >使用状态筛选<select v-model="status">
+            <option value="all">全部角色</option>
+            <option value="active">正常使用</option>
+            <option value="disabled">已停用</option>
+          </select></label
         >
-          <option value="">全部{{ facet.name }}</option>
-          <option
-            v-if="
-              facetFilters[facet.key] &&
-              !facet.options.includes(facetFilters[facet.key])
-            "
-            :value="facetFilters[facet.key]"
+        <label
+          >关系与属性的故事位置<input
+            v-model.number="position"
+            type="number"
+            step="1"
+        /></label>
+      </div>
+      <div class="library-controls">
+        <label v-for="facet in facets" :key="facet.key">
+          {{ facet.name }}筛选
+          <select
+            v-model="facetFilters[facet.key]"
+            :aria-label="`${facet.name}筛选`"
           >
-            {{ facetFilters[facet.key] }}（当前无匹配）
-          </option>
-          <option v-for="value in facet.options" :key="value" :value="value">
-            {{ value }}
-          </option>
-        </select>
-      </label>
-    </div>
+            <option value="">全部{{ facet.name }}</option>
+            <option
+              v-if="
+                facetFilters[facet.key] &&
+                !facet.options.includes(facetFilters[facet.key])
+              "
+              :value="facetFilters[facet.key]"
+            >
+              {{ facetFilters[facet.key] }}（当前无匹配）
+            </option>
+            <option v-for="value in facet.options" :key="value" :value="value">
+              {{ value }}
+            </option>
+          </select>
+        </label>
+      </div>
+      <p class="muted">
+        属性和关系按故事位置
+        {{ at }} 展示。传闻、信念、争议及其他时段记录在详情中单列。
+      </p>
+    </details>
     <div class="library-filter-summary">
       <span role="status"
         >匹配 {{ matches.length }} / {{ characterList.length }} 位角色</span
@@ -366,12 +423,8 @@ function chooseMissingField(name: string) {
         清除角色筛选
       </button>
     </div>
-    <p class="muted">
-      属性和关系按故事位置
-      {{ at }} 展示。传闻、信念、争议及其他时段记录在详情中单列。
-    </p>
     <p v-if="!characterList.length">
-      还没有角色。可在下方编辑区新增角色，角色卡会随草稿更新。
+      还没有角色。新增角色后，资料卡会随草稿更新。
     </p>
     <p v-else-if="!matches.length" role="status">
       没有匹配角色，请调整关键词或筛选。
@@ -417,7 +470,6 @@ function chooseMissingField(name: string) {
             <small>{{ entity.aliases?.join(" · ") || "尚无别名" }}</small>
           </div>
         </div>
-        <code class="character-id">{{ entity.id }}</code>
         <p class="card-description">
           {{
             characterValues(facts, entity.id, ["背景", "经历", "background"])
@@ -430,15 +482,9 @@ function chooseMissingField(name: string) {
         <dl class="card-facts">
           <template
             v-for="fields in [
-              ['性别', 'gender'],
-              ['年龄', '年龄段', 'age'],
               ['角色定位', '定位'],
-              ['性格', 'personality'],
               ['阵营', '组织', 'faction'],
               ['职业', '身份', 'profession'],
-              ['技能', '能力', 'skills'],
-              ['服饰', '服装', 'outfit'],
-              ['特色道具', '道具', 'props'],
             ]"
             :key="fields[0]"
           >
@@ -446,6 +492,26 @@ function chooseMissingField(name: string) {
             <dd>{{ summary(entity.id, fields) }}</dd>
           </template>
         </dl>
+        <details class="card-more">
+          <summary>更多角色概览</summary>
+          <dl class="card-facts">
+            <template
+              v-for="fields in [
+                ['性别', 'gender'],
+                ['年龄', '年龄段', 'age'],
+                ['性格', 'personality'],
+                ['技能', '能力', 'skills'],
+                ['服饰', '服装', 'outfit'],
+                ['特色道具', '道具', 'props'],
+              ]"
+              :key="fields[0]"
+            >
+              <dt>{{ fields[0] }}</dt>
+              <dd>{{ summary(entity.id, fields) }}</dd>
+            </template>
+          </dl>
+          <code class="character-id">{{ entity.id }}</code>
+        </details>
         <button type="button" @click="select(entity.id)">
           查看资料、三视图与关系
         </button>
@@ -467,17 +533,36 @@ function chooseMissingField(name: string) {
         <h3 ref="detailHeading" tabindex="-1">
           {{ selected.name || "未命名角色" }} · 角色详情
         </h3>
-        <button type="button" @click="select('')">收起角色详情</button>
+        <button type="button" class="quiet" @click="select('')">
+          收起角色详情
+        </button>
       </header>
       <p v-if="selectionProblem" role="alert">{{ selectionProblem }}</p>
+      <nav class="author-page-nav" aria-label="角色详情分区">
+        <button
+          v-for="section in availableDetailSections"
+          :key="section.id"
+          type="button"
+          class="quiet"
+          :aria-pressed="activeDetail === section.id"
+          @click="activeDetail = section.id"
+        >
+          {{ section.label }}
+        </button>
+      </nav>
+      <p v-if="newValue.trim() || imageBlocking" class="author-status">
+        <span v-if="newValue.trim()">有尚未加入角色草稿的属性内容。</span>
+        <span v-if="imageBlocking">图片分区有待保存的输入或进行中的操作。</span>
+      </p>
       <p>
         稳定角色 ID：<code>{{ selected.id }}</code>
       </p>
       <p v-if="entityLocked" role="status">
-        角色已锁定。请在下方开启锁定设定修订并说明理由，才能编辑。
+        角色已锁定。须提出锁定设定修订并说明理由，才能编辑。
       </p>
       <fieldset
         v-if="canEdit"
+        v-show="activeDetail === 'profile'"
         :disabled="disabled || entityLocked"
         class="character-edit"
         @input="emit('edited')"
@@ -499,22 +584,28 @@ function chooseMissingField(name: string) {
           >角色背景与简介<textarea v-model="selected.description" rows="3" />
         </label>
       </fieldset>
-      <p v-else>{{ selected.description || "背景待补充" }}</p>
-      <CharacterImages
-        v-if="projectId && branchId"
-        :key="selected.id"
-        :project-id="projectId"
-        :branch-id="branchId"
-        :branch-head="branchHead || ''"
-        :character-id="selected.id"
-        :can-edit="canEdit"
-        :can-publish="!!canPublish"
-        :disabled="disabled"
-        @blocking="imageBlocking = $event"
-        @portrait="portraits[selected.id] = $event"
-      />
+      <p v-else v-show="activeDetail === 'profile'">
+        {{ selected.description || "背景待补充" }}
+      </p>
+      <div v-show="activeDetail === 'images'">
+        <CharacterImages
+          v-if="projectId && branchId"
+          :key="selected.id"
+          :project-id="projectId"
+          :branch-id="branchId"
+          :branch-head="branchHead || ''"
+          :character-id="selected.id"
+          :can-edit="canEdit"
+          :can-publish="!!canPublish"
+          :disabled="disabled"
+          @blocking="imageBlocking = $event"
+          @portrait="portraits[selected.id] = $event"
+          @attention="imageAttention[$event.characterId] = $event.count"
+        />
+      </div>
       <section
         v-for="group in fieldGroups"
+        v-show="activeDetail === 'profile'"
         :key="group.name"
         :aria-label="group.name"
         class="character-field-group"
@@ -557,6 +648,7 @@ function chooseMissingField(name: string) {
       </section>
       <form
         v-if="canEdit"
+        v-show="activeDetail === 'profile'"
         class="add-character-field"
         @submit.prevent="addField"
       >
@@ -591,7 +683,11 @@ function chooseMissingField(name: string) {
           <p class="muted">
             加入当前角色草稿，作为从故事位置
             {{ at }}
-            起生效的事实记录。秘密、传闻或不同生效时间请使用下方设定编辑区。
+            起生效的事实记录。秘密、传闻或不同生效时间请使用{{
+              projectId && branchId
+                ? "「设定草稿」分区"
+                : "角色属性或关系编辑区"
+            }}。
           </p>
           <button
             type="submit"
@@ -612,161 +708,163 @@ function chooseMissingField(name: string) {
           </button>
         </fieldset>
       </form>
-      <h3>与 {{ selected.name || "此角色" }} 的关联</h3>
-      <p v-if="!relations.length">
-        此故事位置还没有登记角色关系；未登记不表示不存在关系。
-      </p>
-      <template v-else>
-        <div class="relationship-controls">
-          <label
-            >关系类型筛选<select
-              v-model="relationType"
-              aria-label="关系类型筛选"
-            >
-              <option value="">全部关系</option>
-              <option
-                v-if="relationType && !relationTypes.includes(relationType)"
-                :value="relationType"
-              >
-                {{ relationType }}（此时无关系）
-              </option>
-              <option v-for="kind in relationTypes" :key="kind" :value="kind">
-                {{ kind }}
-              </option>
-            </select></label
-          >
-          <button
-            type="button"
-            :disabled="zoom <= 0.75"
-            @click="zoom = Math.max(0.75, zoom - 0.25)"
-          >
-            缩小关系图
-          </button>
-          <span>{{ Math.round(zoom * 100) }}%</span>
-          <button
-            type="button"
-            :disabled="zoom >= 2"
-            @click="zoom = Math.min(2, zoom + 0.25)"
-          >
-            放大关系图
-          </button>
-          <button type="button" class="quiet" @click="zoom = 1">
-            重置关系图缩放
-          </button>
-        </div>
-        <p class="muted">
-          当前筛选 {{ neighbors.length }} 位相邻角色、{{
-            filteredRelations.length
-          }}
-          / {{ relations.length }}
-          条有向关系。角色卡筛选不隐藏相邻角色；每组最多显示12位邻居，筛选后的全部关系列于下方。
+      <div v-show="activeDetail === 'relations'">
+        <h3>与 {{ selected.name || "此角色" }} 的关联</h3>
+        <p v-if="!relations.length">
+          此故事位置还没有登记角色关系；未登记不表示不存在关系。
         </p>
-        <p v-if="!filteredRelations.length" role="status">
-          此故事位置没有符合筛选的关系，可切换到全部关系。
-        </p>
-        <nav
-          v-if="relationPages > 1"
-          class="card-pagination"
-          aria-label="关系图分页"
-        >
-          <button
-            type="button"
-            :disabled="relationPage <= 1"
-            @click="relationPage--"
-          >
-            上一组关联角色
-          </button>
-          <span>第 {{ relationPage }} / {{ relationPages }} 组</span>
-          <button
-            type="button"
-            :disabled="relationPage >= relationPages"
-            @click="relationPage++"
-          >
-            下一组关联角色
-          </button>
-        </nav>
-        <div class="relationship-viewport">
-          <svg
-            viewBox="0 0 900 500"
-            role="group"
-            aria-label="当前角色关系图"
-            :style="{ width: `${zoom * 100}%`, minWidth: `${640 * zoom}px` }"
-          >
-            <defs>
-              <marker
-                :id="arrowID"
-                viewBox="0 0 10 10"
-                refX="8"
-                refY="5"
-                markerWidth="6"
-                markerHeight="6"
-                orient="auto-start-reverse"
+        <template v-else>
+          <div class="relationship-controls">
+            <label
+              >关系类型筛选<select
+                v-model="relationType"
+                aria-label="关系类型筛选"
               >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#557b60" />
-              </marker>
-            </defs>
-            <g
-              v-for="edge in edges"
-              :key="edge.entity.id"
-              class="relation-edge"
+                <option value="">全部关系</option>
+                <option
+                  v-if="relationType && !relationTypes.includes(relationType)"
+                  :value="relationType"
+                >
+                  {{ relationType }}（此时无关系）
+                </option>
+                <option v-for="kind in relationTypes" :key="kind" :value="kind">
+                  {{ kind }}
+                </option>
+              </select></label
             >
-              <line
-                :x1="edge.x1"
-                :y1="edge.y1"
-                :x2="edge.x2"
-                :y2="edge.y2"
-                :marker-start="edge.incoming ? `url(#${arrowID})` : undefined"
-                :marker-end="edge.outgoing ? `url(#${arrowID})` : undefined"
-              />
-              <text
-                :x="(450 + edge.x) / 2"
-                :y="(250 + edge.y) / 2 - 8"
-                text-anchor="middle"
-              >
-                {{ edge.label.slice(0, 16) }}
-              </text>
-              <title>{{ edge.label }}</title>
-            </g>
-            <g
-              v-for="node in nodes"
-              :key="node.entity.id"
-              class="relation-node"
-              :class="{ central: node.entity.id === selectedId }"
-              role="button"
-              tabindex="0"
-              :aria-label="`查看角色 ${node.entity.name || '未命名角色'} · ${node.entity.id}`"
-              @click="select(node.entity.id)"
-              @keydown.enter="select(node.entity.id)"
-              @keydown.space.prevent="select(node.entity.id)"
-            >
-              <circle :cx="node.x" :cy="node.y" r="34" />
-              <text :x="node.x" :y="node.y + 5" text-anchor="middle">
-                {{ (node.entity.name || "未命名").slice(0, 7) }}
-              </text>
-              <title>{{ node.entity.name }} · {{ node.entity.id }}</title>
-            </g>
-          </svg>
-        </div>
-        <ul class="relation-list">
-          <li v-for="relation in filteredRelations" :key="relation.id">
-            <strong
-              >{{ name(relation.subject) }} →
-              {{ name(relation.object_id!) }}</strong
-            >
-            · {{ relation.predicate }}：{{ relation.value
-            }}<button
-              v-if="canEdit"
+            <button
               type="button"
-              class="quiet"
-              :disabled="disabled"
-              @click="emit('editAssertion', relation.id)"
+              :disabled="zoom <= 0.75"
+              @click="zoom = Math.max(0.75, zoom - 0.25)"
             >
-              查看 / 编辑关系
+              缩小关系图
             </button>
-          </li>
-        </ul>
-      </template>
-      <details>
+            <span>{{ Math.round(zoom * 100) }}%</span>
+            <button
+              type="button"
+              :disabled="zoom >= 2"
+              @click="zoom = Math.min(2, zoom + 0.25)"
+            >
+              放大关系图
+            </button>
+            <button type="button" class="quiet" @click="zoom = 1">
+              重置关系图缩放
+            </button>
+          </div>
+          <p class="muted">
+            当前筛选 {{ neighbors.length }} 位相邻角色、{{
+              filteredRelations.length
+            }}
+            / {{ relations.length }}
+            条有向关系。角色卡筛选不隐藏相邻角色；每组最多显示12位邻居，筛选后的全部关系列于下方。
+          </p>
+          <p v-if="!filteredRelations.length" role="status">
+            此故事位置没有符合筛选的关系，可切换到全部关系。
+          </p>
+          <nav
+            v-if="relationPages > 1"
+            class="card-pagination"
+            aria-label="关系图分页"
+          >
+            <button
+              type="button"
+              :disabled="relationPage <= 1"
+              @click="relationPage--"
+            >
+              上一组关联角色
+            </button>
+            <span>第 {{ relationPage }} / {{ relationPages }} 组</span>
+            <button
+              type="button"
+              :disabled="relationPage >= relationPages"
+              @click="relationPage++"
+            >
+              下一组关联角色
+            </button>
+          </nav>
+          <div class="relationship-viewport">
+            <svg
+              viewBox="0 0 900 500"
+              role="group"
+              aria-label="当前角色关系图"
+              :style="{ width: `${zoom * 100}%`, minWidth: `${640 * zoom}px` }"
+            >
+              <defs>
+                <marker
+                  :id="arrowID"
+                  viewBox="0 0 10 10"
+                  refX="8"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#557b60" />
+                </marker>
+              </defs>
+              <g
+                v-for="edge in edges"
+                :key="edge.entity.id"
+                class="relation-edge"
+              >
+                <line
+                  :x1="edge.x1"
+                  :y1="edge.y1"
+                  :x2="edge.x2"
+                  :y2="edge.y2"
+                  :marker-start="edge.incoming ? `url(#${arrowID})` : undefined"
+                  :marker-end="edge.outgoing ? `url(#${arrowID})` : undefined"
+                />
+                <text
+                  :x="(450 + edge.x) / 2"
+                  :y="(250 + edge.y) / 2 - 8"
+                  text-anchor="middle"
+                >
+                  {{ edge.label.slice(0, 16) }}
+                </text>
+                <title>{{ edge.label }}</title>
+              </g>
+              <g
+                v-for="node in nodes"
+                :key="node.entity.id"
+                class="relation-node"
+                :class="{ central: node.entity.id === selectedId }"
+                role="button"
+                tabindex="0"
+                :aria-label="`查看角色 ${node.entity.name || '未命名角色'} · ${node.entity.id}`"
+                @click="select(node.entity.id)"
+                @keydown.enter="select(node.entity.id)"
+                @keydown.space.prevent="select(node.entity.id)"
+              >
+                <circle :cx="node.x" :cy="node.y" r="34" />
+                <text :x="node.x" :y="node.y + 5" text-anchor="middle">
+                  {{ (node.entity.name || "未命名").slice(0, 7) }}
+                </text>
+                <title>{{ node.entity.name }} · {{ node.entity.id }}</title>
+              </g>
+            </svg>
+          </div>
+          <ul class="relation-list">
+            <li v-for="relation in filteredRelations" :key="relation.id">
+              <strong
+                >{{ name(relation.subject) }} →
+                {{ name(relation.object_id!) }}</strong
+              >
+              · {{ relation.predicate }}：{{ relation.value
+              }}<button
+                v-if="canEdit"
+                type="button"
+                class="quiet"
+                :disabled="disabled"
+                @click="emit('editAssertion', relation.id)"
+              >
+                查看 / 编辑关系
+              </button>
+            </li>
+          </ul>
+        </template>
+      </div>
+      <details v-show="activeDetail === 'records'" open>
         <summary>
           全部设定记录（{{ selectedAssertions.length }}，含其他时段与非事实）
         </summary>
@@ -820,6 +918,24 @@ function chooseMissingField(name: string) {
   grid-template-columns: 2fr 1fr 1fr;
   gap: 1rem;
 }
+.library-search {
+  margin-top: 1.2rem;
+}
+.library-filter-panel {
+  margin-top: 0.8rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid #d4ded7;
+  border-radius: 10px;
+  background: #f7faf6;
+}
+.library-filter-panel summary,
+.card-more summary {
+  cursor: pointer;
+  color: #405d49;
+}
+.library-filter-panel[open] summary {
+  margin-bottom: 1rem;
+}
 .library-filter-summary,
 .relationship-controls {
   display: flex;
@@ -835,11 +951,21 @@ function chooseMissingField(name: string) {
   margin: 1.2rem 0;
 }
 .character-card {
+  display: flex;
+  flex-direction: column;
   padding: 1rem;
   border: 1px solid #d4ded7;
   border-radius: 12px;
   background: #fafcf9;
   min-width: 0;
+}
+.character-card > button {
+  align-self: flex-start;
+  margin-top: auto;
+}
+.card-more {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.85rem;
 }
 .character-card.selected {
   border-color: #3c795a;

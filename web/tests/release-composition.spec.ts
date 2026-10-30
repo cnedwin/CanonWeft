@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
+import { openIPSection } from "./ip-edit-helper";
 
 test("组合候选先展示引用冲突，明确改绑后保存且失败不换请求（受控组合接口）", async ({
   page,
@@ -84,6 +85,7 @@ test("组合候选先展示引用冲突，明确改绑后保存且失败不换�
   await page.getByRole("button", { name: p.name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库", exact: true }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("合并本分支的修订批次", { exact: true }).click();
   const panel = page.getByRole("group", { name: "修订批次组合" });
   await panel

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
+import { openIPSection } from "./ip-edit-helper";
 
 test("补充检查范围使用检索原文，旧版本禁选，保存失败保留理由并原操作重试（受控 UI）", async ({
   page,
@@ -118,6 +119,7 @@ test("补充检查范围使用检索原文，旧版本禁选，保存失败保�
   await page.getByRole("button", { name: project.name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库", exact: true }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("依赖、冻结与变更影响", { exact: true }).click();
   await page
     .getByLabel("已保存的影响清单", { exact: true })

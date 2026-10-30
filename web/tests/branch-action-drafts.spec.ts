@@ -1,6 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
-import { saveReasonedCandidate } from "./ip-edit-helper";
+import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 
 test("回流选择与逐项理由刷新恢复，影响入口读取实际清单", async ({ page }) => {
   await loginAsOwner(page);
@@ -33,6 +33,7 @@ test("回流选择与逐项理由刷新恢复，影响入口读取实际清单",
   await page.getByRole("button", { name: "发布此版本" }).first().click();
   await expect(page.getByText("正式版本已发布，旧版本仍保留。")).toBeVisible();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   const promotion = page
     .locator("section")
     .filter({
@@ -59,6 +60,7 @@ test("回流选择与逐项理由刷新恢复，影响入口读取实际清单",
   await page.getByRole("button", { name: project, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await expect(promotion.getByLabel("回流来源")).not.toHaveValue("");
   await promotion.getByRole("button", { name: "读取改编正式版本" }).click();
   await expect(

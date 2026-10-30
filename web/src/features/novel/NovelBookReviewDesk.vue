@@ -78,6 +78,11 @@ const listError = ref(""),
   reportError = ref(""),
   setupError = ref("");
 const prepareRegion = ref<HTMLElement | null>(null);
+const reviewView = ref<"reports" | "prepare">("reports");
+const attentionRuns = computed(() =>
+  runs.value.filter((run) => run.uncertain_calls > 0 || run.held_micros > 0),
+);
+let initialRunsLoaded = false;
 const savedView = ref<BookReviewViewState>({
   runId: props.initialRunId ?? "",
   filters: {
@@ -178,7 +183,14 @@ async function loadRuns() {
   listError.value = "";
   try {
     const value = await read<{ items: RecipeRun[] }>(root);
-    if (alive && request === listEpoch) runs.value = value.items;
+    if (alive && request === listEpoch) {
+      runs.value = value.items;
+      if (!initialRunsLoaded) {
+        initialRunsLoaded = true;
+        if (!value.items.length && !selectedRun.value)
+          reviewView.value = "prepare";
+      }
+    }
   } catch (e) {
     if (!alive || request !== listEpoch) return;
     if (e instanceof APIError && [401, 403].includes(e.status)) {
@@ -225,6 +237,7 @@ async function reload() {
 }
 async function choose(id: string) {
   if (busy.value || issueBlocking.value) return;
+  reviewView.value = "reports";
   if (selectedRun.value !== id) {
     selectedRun.value = id;
     report.value = null;
@@ -378,6 +391,7 @@ async function prepare() {
     });
     if (!alive) return;
     selectedRun.value = value.id;
+    reviewView.value = "reports";
     report.value = null;
     operation.value = newOperationID();
     savedView.value = {
@@ -456,7 +470,10 @@ function prepareAgain() {
   incomplete.value = false;
   notice.value =
     "已将原审稿范围和重点填回准备区，正文来源改为当前已保存稿。请重新检查范围并明确保存新任务；尚未准备或启动任何模型调用。";
-  prepareRegion.value?.scrollIntoView({ block: "start" });
+  reviewView.value = "prepare";
+  requestAnimationFrame(() =>
+    prepareRegion.value?.scrollIntoView({ block: "start" }),
+  );
 }
 function schedule() {
   timer = setTimeout(async () => {
@@ -486,282 +503,359 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="book-review" aria-label="整卷与全书审稿">
-    <header class="section-heading">
+  <section class="book-review author-subpage" aria-label="整卷与全书审稿">
+    <header class="author-page-header">
       <div>
         <p class="eyebrow">{{ book.setup.title }}</p>
         <h1>整卷与全书审稿</h1>
       </div>
-      <button :disabled="busy || issueBlocking" @click="emit('close')">
-        返回小说工作台
+      <button
+        class="quiet"
+        :disabled="busy || issueBlocking"
+        @click="emit('close')"
+      >
+        返回本书工作区
       </button>
     </header>
-    <p>
+    <p class="author-page-description">
       按顺序阅读全文，检查人物、因果、伏笔、主题、高光和语言。问题保留原文引用，修订建议由你决定是否采用。
     </p>
-    <fieldset ref="prepareRegion" :disabled="busy || issueBlocking">
-      <legend>准备审稿</legend>
-      <label
-        >正文来源<select v-model="source" aria-label="审稿正文来源">
-          <option value="draft">我的已保存稿（无私人稿时使用正式稿）</option>
-          <option value="published">仅正式采用稿</option>
-        </select></label
+    <nav class="author-page-nav" aria-label="审稿分区">
+      <button
+        class="quiet"
+        :aria-pressed="reviewView === 'reports'"
+        :disabled="busy || issueBlocking"
+        @click="reviewView = 'reports'"
       >
-      <label
-        >审稿范围<select v-model="volume" aria-label="审稿范围">
-          <option value="">整书</option>
-          <option v-for="v in catalog" :key="v.id" :value="v.id">
-            {{ v.title }}
-          </option>
-          <option
-            v-if="volume && !catalog.some((item) => item.id === volume)"
-            :value="volume"
-          >
-            原报告分卷 {{ volume.slice(0, 8) }}（请重新核对目录）
-          </option>
-        </select></label
-      >
-      <label
-        >本次重点<textarea
-          v-model="notes"
-          aria-label="审稿重点"
-          maxlength="6000"
-          placeholder="例如：主角的成长是否可信，前卷伏笔是否被遗忘"
-        />
-      </label>
-      <label
-        >审稿方法<select v-model="agent" aria-label="审稿方法">
-          <option value="">预置整卷审稿方法</option>
-          <option v-for="a in agents" :key="a.id" :value="a.id">
-            {{ a.definition.name }} · {{ a.created_at }}
-          </option>
-        </select></label
-      >
-      <button v-if="agentCursor" :disabled="setupLoading" @click="moreAgents">
-        加载更多已保存方法
+        审稿报告 <span>{{ runs.length }}</span>
       </button>
-      <p v-if="setupError" role="alert">
-        准备区配置：{{ setupError }}。已有审稿报告仍可阅读。
-      </p>
-      <button :disabled="setupLoading" @click="loadSetup">
-        刷新准备区配置
+      <button
+        class="quiet"
+        :aria-pressed="reviewView === 'prepare'"
+        :disabled="busy || issueBlocking"
+        @click="reviewView = 'prepare'"
+      >
+        准备新审稿
       </button>
-      <p class="muted">
-        预置 Agent 和 Skill
-        会随准备任务保存到能力库，可在那里另存编辑版本后重新选择。编辑方法仍须保留证据和覆盖范围契约。
-      </p>
-      <p>
-        审稿模型：{{
-          critic
-            ? `${critic.name} / ${critic.model}`
-            : "尚未配置，请先到模型设置配置独立审阅用途"
-        }}
-      </p>
-      <label
-        >本次总费用上限（{{ critic?.price.currency ?? "模型计价币种" }}）<input
-          v-model="budget"
-          aria-label="审稿费用上限"
-          inputmode="decimal"
-      /></label>
-      <label
-        >每段报告长度上限<input
-          v-model.number="tokens"
-          aria-label="审稿输出上限"
-          type="number"
-          min="256"
-          max="32768"
-          step="256"
-      /></label>
-      <button @click="inspect">检查审稿范围</button>
-      <div v-if="preview" class="panel">
-        <p>
-          将读取 {{ preview.included }} 章，分 {{ preview.passes }} 段；缺少
-          {{ preview.missing }} 章，{{ preview.warnings }} 项依据待核对。
-        </p>
-        <ul v-if="preview.warnings">
-          <li
-            v-for="c in preview.chapters.filter((c) => c.warning)"
-            :key="c.id"
-          >
-            {{ c.title }}：{{ c.warning }}
-          </li>
-        </ul>
-        <label v-if="needsConsent" class="consent"
-          ><input
-            v-model="incomplete"
-            type="checkbox"
-          />我确认按当前不完整稿审读，并保留缺章及过期依据提示</label
+    </nav>
+    <aside
+      v-if="attentionRuns.length"
+      class="review-attention"
+      aria-label="待核对的审稿费用"
+      role="status"
+    >
+      <div>
+        <strong
+          >{{ attentionRuns.length }} 项任务有待结算费用或结果未知调用</strong
         >
-        <button
-          :disabled="!critic || (needsConsent && !incomplete)"
-          @click="prepare"
-        >
-          保存审稿任务（不调用模型）
-        </button>
+        <p>已发出的请求请先核对任务记录与账单，再决定后续操作。</p>
       </div>
-    </fieldset>
+      <button
+        class="quiet"
+        :disabled="busy || issueBlocking"
+        @click="choose(attentionRuns[0]?.id ?? '')"
+      >
+        查看待核对任务
+      </button>
+    </aside>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
-    <div class="section-heading">
-      <h2>审稿记录</h2>
-      <button
-        :disabled="busy || issueBlocking || listLoading || reportLoading"
-        @click="reload"
+    <section v-show="reviewView === 'prepare'" aria-label="准备新审稿">
+      <fieldset
+        ref="prepareRegion"
+        class="panel review-prepare"
+        :disabled="busy || issueBlocking"
       >
-        刷新审稿记录
-      </button>
-    </div>
-    <p v-if="listLoading || reportLoading" role="status">正在读取审稿记录…</p>
-    <p v-if="listError" role="alert">{{ listError }}</p>
-    <p v-if="reportError" role="alert">{{ reportError }}</p>
-    <p v-if="!runs.length && !listLoading && !listError">还没有审稿任务。</p>
-    <ul>
-      <li v-for="r in runs" :key="r.id">
-        <button :disabled="busy || issueBlocking" @click="choose(r.id)">
-          {{ recipeStates[r.state] ?? r.state }} · {{ r.id.slice(0, 8) }} ·
-          {{ r.spent_micros / 1000000 }} {{ r.currency }}
-        </button>
-      </li>
-    </ul>
-    <article v-if="report" class="panel" aria-label="审稿报告">
-      <h2>
-        {{ recipeStates[report.run.state] ?? report.run.state
-        }}{{ report.run.paused ? " · 已暂停" : "" }}
-      </h2>
-      <p v-if="report.stale" role="status">
-        报告已过期：{{ report.stale_reason }}
-      </p>
-      <p>
-        已核对报告覆盖 {{ report.covered }} /
-        {{ report.preview.included }} 章；目录另有
-        {{ report.preview.missing }}
-        章缺失。任务完成只表示流程执行结束，不代表作品没有问题或通过平台审核。
-      </p>
-      <p>
-        费用 {{ report.run.spent_micros / 1000000 }} /
-        {{ report.run.budget_limit_micros / 1000000 }}
-        {{ report.run.currency }}；待结算
-        {{ report.run.held_micros / 1000000 }}，结果未知调用
-        {{ report.run.uncertain_calls }} 次。
-      </p>
-      <p v-if="report.run.reason">当前等待原因：{{ report.run.reason }}</p>
-      <div class="actions">
-        <button :disabled="busy || issueBlocking" @click="prepareAgain">
-          以当前稿准备重新审稿
-        </button>
-        <button
-          v-if="report.run.state === 'PREPARED'"
-          :disabled="
-            busy ||
-            issueBlocking ||
-            report.stale ||
-            report.run.restored_disabled
-          "
-          @click="control('start')"
+        <legend>准备审稿</legend>
+        <p class="review-full muted">
+          先核对正文与费用，再保存任务。准备阶段不会调用模型；开始审稿需单独确认。
+        </p>
+        <label
+          >正文来源<select v-model="source" aria-label="审稿正文来源">
+            <option value="draft">我的已保存稿（无私人稿时使用正式稿）</option>
+            <option value="published">仅正式采用稿</option>
+          </select></label
         >
-          开始审稿（将调用模型）
-        </button>
-        <button
-          v-if="report.run.state === 'RUNNING' && !report.run.paused"
-          :disabled="busy || issueBlocking"
-          @click="control('pause')"
+        <label
+          >审稿范围<select v-model="volume" aria-label="审稿范围">
+            <option value="">整书</option>
+            <option v-for="v in catalog" :key="v.id" :value="v.id">
+              {{ v.title }}
+            </option>
+            <option
+              v-if="volume && !catalog.some((item) => item.id === volume)"
+              :value="volume"
+            >
+              原报告分卷 {{ volume.slice(0, 8) }}（请重新核对目录）
+            </option>
+          </select></label
         >
-          暂停审稿
-        </button>
+        <label class="review-full"
+          >本次重点<textarea
+            v-model="notes"
+            aria-label="审稿重点"
+            maxlength="6000"
+            placeholder="例如：主角的成长是否可信，前卷伏笔是否被遗忘"
+          />
+        </label>
+        <details class="review-full review-methods">
+          <summary>审稿方法与报告长度</summary>
+          <div class="review-method-fields">
+            <label
+              >审稿方法<select v-model="agent" aria-label="审稿方法">
+                <option value="">预置整卷审稿方法</option>
+                <option v-for="a in agents" :key="a.id" :value="a.id">
+                  {{ a.definition.name }} · {{ a.created_at }}
+                </option>
+              </select></label
+            >
+            <button
+              v-if="agentCursor"
+              :disabled="setupLoading"
+              @click="moreAgents"
+            >
+              加载更多已保存方法
+            </button>
+            <button :disabled="setupLoading" @click="loadSetup">
+              刷新准备区配置
+            </button>
+            <p class="muted">
+              预置 Agent 和 Skill
+              会随准备任务保存到能力库，可在那里另存编辑版本后重新选择。编辑方法仍须保留证据和覆盖范围契约。
+            </p>
+            <label
+              >每段报告长度上限<input
+                v-model.number="tokens"
+                aria-label="审稿输出上限"
+                type="number"
+                min="256"
+                max="32768"
+                step="256"
+            /></label>
+          </div>
+        </details>
+        <p v-if="setupError" class="review-full" role="alert">
+          准备区配置：{{ setupError }}。已有审稿报告仍可阅读。
+        </p>
+        <p class="review-model">
+          审稿模型：{{
+            critic
+              ? `${critic.name} / ${critic.model}`
+              : "尚未配置，请先到模型设置配置独立审阅用途"
+          }}
+        </p>
+        <label
+          >本次总费用上限（{{
+            critic?.price.currency ?? "模型计价币种"
+          }}）<input
+            v-model="budget"
+            aria-label="审稿费用上限"
+            inputmode="decimal"
+        /></label>
+        <div class="review-full">
+          <button @click="inspect">检查审稿范围</button>
+        </div>
+        <div v-if="preview" class="panel review-full">
+          <p>
+            将读取 {{ preview.included }} 章，分 {{ preview.passes }} 段；缺少
+            {{ preview.missing }} 章，{{ preview.warnings }} 项依据待核对。
+          </p>
+          <ul v-if="preview.warnings">
+            <li
+              v-for="c in preview.chapters.filter((c) => c.warning)"
+              :key="c.id"
+            >
+              {{ c.title }}：{{ c.warning }}
+            </li>
+          </ul>
+          <label v-if="needsConsent" class="consent"
+            ><input
+              v-model="incomplete"
+              type="checkbox"
+            />我确认按当前不完整稿审读，并保留缺章及过期依据提示</label
+          >
+          <button
+            :disabled="!critic || (needsConsent && !incomplete)"
+            @click="prepare"
+          >
+            保存审稿任务（不调用模型）
+          </button>
+        </div>
+      </fieldset>
+    </section>
+    <section v-show="reviewView === 'reports'" aria-label="审稿记录与报告">
+      <div class="section-heading">
+        <h2>审稿记录</h2>
         <button
-          v-if="report.run.paused"
-          :disabled="busy || issueBlocking || report.stale"
-          @click="control('resume')"
+          class="quiet"
+          :disabled="busy || issueBlocking || listLoading || reportLoading"
+          @click="reload"
         >
-          继续审稿
-        </button>
-        <button
-          v-if="!['COMPLETED', 'CANCELLED'].includes(report.run.state)"
-          :disabled="busy || issueBlocking"
-          @click="control('cancel')"
-        >
-          取消任务
+          刷新审稿记录
         </button>
       </div>
-      <ul>
-        <li v-for="s in stages" :key="s.id">
-          第 {{ s.ordinal + 1 }} 段：{{ recipeStates[s.state] ?? s.state }} ·
-          {{ s.frozen.config.name }} / {{ s.frozen.config.model }}
+      <p v-if="listLoading || reportLoading" role="status">正在读取审稿记录…</p>
+      <p v-if="listError" role="alert">{{ listError }}</p>
+      <p v-if="reportError" role="alert">{{ reportError }}</p>
+      <p v-if="!runs.length && !listLoading && !listError">还没有审稿任务。</p>
+      <ul class="review-run-list">
+        <li v-for="r in runs" :key="r.id">
           <button
-            v-if="
-              ['FAILED', 'BLOCKED'].includes(report.run.state) &&
-              s.state !== 'COMPLETED'
-            "
+            class="quiet"
+            :aria-pressed="selectedRun === r.id"
+            :disabled="busy || issueBlocking"
+            @click="choose(r.id)"
+          >
+            {{ recipeStates[r.state] ?? r.state }} · {{ r.id.slice(0, 8) }} ·
+            {{ r.spent_micros / 1000000 }} {{ r.currency }}
+          </button>
+        </li>
+      </ul>
+      <article v-if="report" class="panel" aria-label="审稿报告">
+        <h2>
+          {{ recipeStates[report.run.state] ?? report.run.state
+          }}{{ report.run.paused ? " · 已暂停" : "" }}
+        </h2>
+        <p v-if="report.stale" role="status">
+          报告已过期：{{ report.stale_reason }}
+        </p>
+        <p>
+          已核对报告覆盖 {{ report.covered }} /
+          {{ report.preview.included }} 章；目录另有
+          {{ report.preview.missing }}
+          章缺失。任务完成只表示流程执行结束，不代表作品没有问题或通过平台审核。
+        </p>
+        <p>
+          费用 {{ report.run.spent_micros / 1000000 }} /
+          {{ report.run.budget_limit_micros / 1000000 }}
+          {{ report.run.currency }}；待结算
+          {{ report.run.held_micros / 1000000 }}，结果未知调用
+          {{ report.run.uncertain_calls }} 次。
+        </p>
+        <p v-if="report.run.reason">当前等待原因：{{ report.run.reason }}</p>
+        <div class="actions">
+          <button :disabled="busy || issueBlocking" @click="prepareAgain">
+            以当前稿准备重新审稿
+          </button>
+          <button
+            v-if="report.run.state === 'PREPARED'"
             :disabled="
               busy ||
               issueBlocking ||
               report.stale ||
-              report.run.restored_disabled ||
-              report.run.uncertain_calls > 0
+              report.run.restored_disabled
             "
-            @click="retry(s)"
+            @click="control('start')"
           >
-            重试此段及后续段落
+            开始审稿（将调用模型）
           </button>
-        </li>
-      </ul>
-      <p v-for="limit in report.limits" :key="limit">{{ limit }}</p>
-      <NovelReviewIssues
-        :key="report.run.id"
-        :root="root"
-        :report="report"
-        :disabled="busy"
-        :initial-filters="savedView.filters"
-        :initial-focused-issue="savedView.focusedIssue"
-        @blocking="issueBlocking = $event"
-        @view="remember"
-        @edit="emit('edit', $event)"
-        @expired="emit('expired')"
-        @denied="denied"
-      />
-      <section
-        v-for="p in report.passes"
-        :key="p.step_id ?? p.key"
-        class="review-pass"
-      >
-        <h3>{{ p.chapter_ids.map(title).join(" / ") }}</h3>
-        <dl class="checks">
-          <template
-            v-for="(status, category) in p.result.checks"
-            :key="category"
-            ><dt>{{ labels[category] ?? category }}</dt>
-            <dd>{{ checks[status] ?? status }}</dd></template
+          <button
+            v-if="report.run.state === 'RUNNING' && !report.run.paused"
+            :disabled="busy || issueBlocking"
+            @click="control('pause')"
           >
-        </dl>
-        <p v-if="!p.result.findings.length">
-          本段没有列出问题，请结合依据不足项与作者判断阅读。
-        </p>
-        <p v-else>
-          本段列出
-          {{ p.result.findings.length }} 项问题，可在上方问题工作台筛选和处理。
-        </p>
-        <details>
-          <summary>向后段传递的状态（{{ p.result.carry.length }} 项）</summary>
-          <ul>
-            <li v-for="c in p.result.carry" :key="c.key">
-              {{
-                { open: "待核对", resolved: "已解释", uncertain: "不确定" }[
-                  c.status
-                ] ?? c.status
-              }}：{{ c.summary }}
-              <blockquote v-for="(e, i) in c.evidence" :key="i">
-                《{{ title(e.chapter_id) }}》：{{ e.quote }}
-              </blockquote>
+            暂停审稿
+          </button>
+          <button
+            v-if="report.run.paused"
+            :disabled="busy || issueBlocking || report.stale"
+            @click="control('resume')"
+          >
+            继续审稿
+          </button>
+          <button
+            v-if="!['COMPLETED', 'CANCELLED'].includes(report.run.state)"
+            :disabled="busy || issueBlocking"
+            @click="control('cancel')"
+          >
+            取消任务
+          </button>
+        </div>
+        <ul>
+          <li v-for="s in stages" :key="s.id">
+            第 {{ s.ordinal + 1 }} 段：{{ recipeStates[s.state] ?? s.state }} ·
+            {{ s.frozen.config.name }} / {{ s.frozen.config.model }}
+            <button
+              v-if="
+                ['FAILED', 'BLOCKED'].includes(report.run.state) &&
+                s.state !== 'COMPLETED'
+              "
+              :disabled="
+                busy ||
+                issueBlocking ||
+                report.stale ||
+                report.run.restored_disabled ||
+                report.run.uncertain_calls > 0
+              "
+              @click="retry(s)"
+            >
+              重试此段及后续段落
+            </button>
+          </li>
+        </ul>
+        <p v-for="limit in report.limits" :key="limit">{{ limit }}</p>
+        <NovelReviewIssues
+          :key="report.run.id"
+          :root="root"
+          :report="report"
+          :disabled="busy"
+          :initial-filters="savedView.filters"
+          :initial-focused-issue="savedView.focusedIssue"
+          @blocking="issueBlocking = $event"
+          @view="remember"
+          @edit="emit('edit', $event)"
+          @expired="emit('expired')"
+          @denied="denied"
+        />
+        <details
+          v-for="p in report.passes"
+          :key="p.step_id ?? p.key"
+          class="review-pass"
+        >
+          <summary>
+            {{ p.chapter_ids.map(title).join(" / ") }} · 分段核对详情
+          </summary>
+          <dl class="checks">
+            <template
+              v-for="(status, category) in p.result.checks"
+              :key="category"
+              ><dt>{{ labels[category] ?? category }}</dt>
+              <dd>{{ checks[status] ?? status }}</dd></template
+            >
+          </dl>
+          <p v-if="!p.result.findings.length">
+            本段没有列出问题，请结合依据不足项与作者判断阅读。
+          </p>
+          <p v-else>
+            本段列出
+            {{ p.result.findings.length }}
+            项问题，可在上方问题工作台筛选和处理。
+          </p>
+          <details>
+            <summary>
+              向后段传递的状态（{{ p.result.carry.length }} 项）
+            </summary>
+            <ul>
+              <li v-for="c in p.result.carry" :key="c.key">
+                {{
+                  { open: "待核对", resolved: "已解释", uncertain: "不确定" }[
+                    c.status
+                  ] ?? c.status
+                }}：{{ c.summary }}
+                <blockquote v-for="(e, i) in c.evidence" :key="i">
+                  《{{ title(e.chapter_id) }}》：{{ e.quote }}
+                </blockquote>
+              </li>
+            </ul>
+          </details>
+          <ul v-if="p.result.limits.length">
+            <li v-for="limit in p.result.limits" :key="limit">
+              判断范围：{{ limit }}
             </li>
           </ul>
         </details>
-        <ul v-if="p.result.limits.length">
-          <li v-for="limit in p.result.limits" :key="limit">
-            判断范围：{{ limit }}
-          </li>
-        </ul>
-      </section>
-    </article>
+      </article>
+    </section>
   </section>
 </template>
 
@@ -770,9 +864,68 @@ onBeforeUnmount(() => {
   max-width: 1100px;
   margin: auto;
 }
-.book-review fieldset {
+.review-prepare {
   display: grid;
-  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  min-width: 0;
+}
+.review-prepare legend {
+  padding: 0 8px;
+  font-weight: 600;
+}
+.review-full {
+  grid-column: 1 / -1;
+}
+.review-prepare p {
+  margin: 0;
+}
+.review-model {
+  align-self: center;
+}
+.review-methods {
+  border-block: 1px solid #e1e5da;
+  padding: 14px 0;
+}
+.review-methods summary {
+  cursor: pointer;
+  color: #52665d;
+}
+.review-method-fields {
+  display: grid;
+  gap: 16px;
+  padding-top: 18px;
+}
+.review-attention {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  margin: 0 0 24px;
+  border: 1px solid #d8d1b7;
+  border-radius: 10px;
+  background: #f6f2e7;
+}
+.review-attention p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+.review-attention button {
+  flex-shrink: 0;
+}
+.review-run-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 24px;
+}
+.review-run-list button[aria-pressed="true"] {
+  color: #285c4d;
+  border-color: #91ad98;
+  background: #edf1e6;
 }
 .book-review label {
   display: grid;
@@ -798,6 +951,14 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--border, #ddd);
   padding-top: 1rem;
 }
+.review-pass > summary {
+  cursor: pointer;
+  color: #52665d;
+  font-weight: 600;
+}
+.review-pass > .checks {
+  margin-top: 20px;
+}
 .finding {
   padding: 1rem;
   background: var(--surface, #fafafa);
@@ -815,5 +976,14 @@ onBeforeUnmount(() => {
 }
 button {
   white-space: normal;
+}
+@media (max-width: 680px) {
+  .review-prepare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .review-attention {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

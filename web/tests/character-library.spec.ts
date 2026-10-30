@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
+import { openIPSection } from "./ip-edit-helper";
 
 test("角色卡按身份检索，关系随时间变化，直接编辑持久保存但不发布", async ({
   page,
@@ -121,6 +122,7 @@ test("角色卡按身份检索，关系随时间变化，直接编辑持久保�
   await page.getByRole("button", { name: "正史", exact: true }).click();
   const library = page.getByRole("region", { name: "角色库" });
   await expect(library.getByTestId("character-card")).toHaveCount(16);
+  await library.locator(".library-filter-panel > summary").click();
   await library.getByLabel("阵营筛选", { exact: true }).selectOption("药师会");
   await library.getByLabel("职业筛选", { exact: true }).selectOption("医师");
   await library.getByLabel("标签筛选", { exact: true }).selectOption("群像");
@@ -159,6 +161,10 @@ test("角色卡按身份检索，关系随时间变化，直接编辑持久保�
     .getByRole("button", { name: "加入角色草稿", exact: true })
     .click();
   await expect(library.getByTestId("character-card")).toContainText("青布长衫");
+  await library
+    .getByRole("navigation", { name: "角色详情分区" })
+    .getByRole("button", { name: "人物关系", exact: true })
+    .click();
   const graph = library.getByRole("group", { name: "当前角色关系图" });
   await expect(graph).toContainText("师承");
   await expect(
@@ -200,10 +206,18 @@ test("角色卡按身份检索，关系随时间变化，直接编辑持久保�
   await library.getByLabel("角色姓名", { exact: true }).fill("顾青山");
   await library.getByLabel("新增角色属性").fill("性格");
   await library.getByLabel("新增属性内容").fill("严厉但护短");
+  await library
+    .getByRole("navigation", { name: "角色详情分区" })
+    .getByRole("button", { name: "人物关系", exact: true })
+    .click();
   await graph.getByRole("button", { name: "查看角色 林舟 · hero" }).click();
   await expect(library.getByRole("alert")).toContainText(
     "请先保存当前属性或图片，或清空未保存的输入，再切换角色。",
   );
+  await library
+    .getByRole("navigation", { name: "角色详情分区" })
+    .getByRole("button", { name: "基础与属性", exact: true })
+    .click();
   await expect(library.getByLabel("角色姓名", { exact: true })).toHaveValue(
     "顾青山",
   );
@@ -285,6 +299,8 @@ test("角色卡按身份检索，关系随时间变化，直接编辑持久保�
   await expect(
     library.getByRole("button", { name: "补充服饰", exact: true }),
   ).toBeDisabled();
+  await openIPSection(page, "设定草稿");
   await page.getByLabel("提出锁定设定修订（须负责人专门批准）").check();
+  await openIPSection(page, "角色资料");
   await expect(library.getByLabel("角色姓名", { exact: true })).toBeEnabled();
 });

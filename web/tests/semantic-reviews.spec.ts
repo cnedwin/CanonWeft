@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect, type Page } from "@playwright/test";
+import { openIPSection } from "./ip-edit-helper";
 
 const headers = { Origin: "http://127.0.0.1:18865" };
 async function project(page: Page, name: string) {
@@ -49,6 +50,7 @@ test("人工逐项理由刷新保留且无模型可采用", async ({ page }) => 
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "设定草稿");
   await page
     .getByRole("button", { name: "检查变更并保存候选", exact: true })
     .click();
@@ -231,6 +233,7 @@ test("派生资料独立审查后明确选择再采用发布", async ({ page }) 
     await page.getByRole("button", { name, exact: true }).click();
     await page.getByRole("button", { name: "打开设定库" }).click();
     await page.getByRole("button", { name: "正史", exact: true }).click();
+    await openIPSection(page, "版本与分支");
     await page
       .getByRole("button", { name: "检查联合候选", exact: true })
       .first()

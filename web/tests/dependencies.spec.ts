@@ -1,5 +1,5 @@
 import { loginAsOwner } from "./owner-session";
-import { saveReasonedCandidate } from "./ip-edit-helper";
+import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 import { test, expect } from "@playwright/test";
 
 test("依赖和冻结经确认发布，变更清单可刷新回读且不会改写正文", async ({
@@ -103,6 +103,7 @@ test("依赖和冻结经确认发布，变更清单可刷新回读且不会改�
     .getByRole("button", { name: "确认采用整组内容", exact: true })
     .click();
   await page.getByRole("button", { name: "发布整组内容", exact: true }).click();
+  await openIPSection(page, "设定草稿");
   await page.getByLabel("实体简介").fill("短发，左眼有伤痕，青年医师");
   await expect(page.getByText("草稿已自动暂存，尚未采用")).toBeVisible();
   await saveReasonedCandidate(page);
@@ -121,6 +122,7 @@ test("依赖和冻结经确认发布，变更清单可刷新回读且不会改�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("依赖、冻结与变更影响", { exact: true }).click();
   await page.getByLabel("已保存的影响清单").selectOption(planID);
   await page

@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
+import { openIPSection } from "./ip-edit-helper";
 
 test("上传文字资料，经候选采用发布后做真实语义检索并回查原文", async ({
   page,
@@ -13,6 +14,7 @@ test("上传文字资料，经候选采用发布后做真实语义检索并回�
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page.getByText("从文件导入资料", { exact: true }).click();
   const content = "🌙剑客进入山洞寻找失落的宝剑。\n洞穴深处有一条地下河。";
   await page.getByLabel("上传资料文件").setInputFiles({
@@ -46,6 +48,7 @@ test("上传文字资料，经候选采用发布后做真实语义检索并回�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库", exact: true }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
+  await openIPSection(page, "版本与分支");
   await page
     .getByRole("button", { name: "检查联合候选", exact: true })
     .first()
@@ -54,6 +57,7 @@ test("上传文字资料，经候选采用发布后做真实语义检索并回�
     "索引已就绪",
   );
   await page.getByRole("button", { name: "发布整组内容", exact: true }).click();
+  await openIPSection(page, "知识与任务");
   await page
     .getByRole("button", { name: "构建 / 更新检索索引", exact: true })
     .click();
