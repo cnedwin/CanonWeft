@@ -91,7 +91,9 @@ const canTake = computed(
     old.value.text !== props.current.document.text,
 );
 let listSequence = 0,
-  textSequence = 0;
+  textSequence = 0,
+  writeSequence = 0,
+  authorizationEpoch = 0;
 const labels = {
   auto: "自动留版",
   manual: "手动留版",
@@ -101,6 +103,7 @@ const labels = {
 function fail(cause: unknown) {
   error.value = message(cause);
   if (cause instanceof APIError && [401, 403].includes(cause.status)) {
+    ++authorizationEpoch;
     ++listSequence;
     ++textSequence;
     items.value = [];
@@ -108,6 +111,7 @@ function fail(cause: unknown) {
     selected.value = "";
     next.value = "";
     acknowledged.value = false;
+    notice.value = "";
     loading.value = false;
     reading.value = false;
     // The identity of an unknown write is kept for read-back. A denial is not
@@ -226,29 +230,49 @@ async function checkpoint() {
   unknown.value = input;
   error.value = "";
   notice.value = "";
-  try {
-    const value = await api<HistoryMeta>(path, "POST", input);
-    if (!reads.active() || root.value !== path) return;
-    confirmReceipt(value, input);
-  } catch (cause) {
-    if (reads.active()) {
-      // Explicit rejected requests have no checkpoint; lost/invalid responses may
-      // have committed. Never repeat the POST based on a read deadline.
+  const ticket = ++writeSequence,
+    epoch = authorizationEpoch;
+  const owns = () =>
+    reads.active() && ticket === writeSequence && root.value === path;
+  const accepts = () =>
+    owns() &&
+    authorizationEpoch === epoch &&
+    unknown.value?.operation_id === input.operation_id;
+  // Bound only how long the UI waits. The original mutation is never aborted
+  // or retried; its continuation remains guarded even after the UI moves on.
+  const pendingWrite = (async () => {
+    try {
+      const value = await api<HistoryMeta>(path, "POST", input);
+      if (accepts()) confirmReceipt(value, input);
+    } catch (cause) {
+      if (!accepts()) return;
       if (
         cause instanceof APIError &&
-        cause.status >= 400 &&
-        cause.status < 500
+        [400, 401, 403, 404, 409, 413, 422].includes(cause.status)
       )
         unknown.value = null;
       fail(cause);
     }
+  })();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const waitLimit = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      if (accepts())
+        notice.value = "留版响应仍未结束，结果待核对；原请求未取消或重发。";
+      resolve();
+    }, 15000);
+  });
+  try {
+    await Promise.race([pendingWrite, waitLimit]);
   } finally {
-    if (reads.active()) creating.value = false;
+    clearTimeout(timer);
+    if (owns()) creating.value = false;
   }
 }
 async function check() {
   const input = unknown.value,
-    path = root.value;
+    path = root.value,
+    epoch = authorizationEpoch;
   if (!input || checking.value || creating.value) return;
   checking.value = true;
   error.value = "";
@@ -256,7 +280,12 @@ async function check() {
     const page = await reads.read<HistoryPage>(
       `${path}?operation_id=${encodeURIComponent(input.operation_id)}`,
     );
-    if (!reads.active() || unknown.value !== input || root.value !== path)
+    if (
+      !reads.active() ||
+      unknown.value !== input ||
+      root.value !== path ||
+      authorizationEpoch !== epoch
+    )
       return;
     if (page.items.length === 1) confirmReceipt(page.items[0]!, input);
     else if (page.items.length === 0)
@@ -264,7 +293,12 @@ async function check() {
         "暂未读到该次留版，原请求仍可能迟到；可以继续核对，未重发请求。";
     else throw new Error("留版结果不唯一，请保留当前手稿并重新核对。");
   } catch (cause) {
-    if (reads.active() && unknown.value === input) fail(cause);
+    if (
+      reads.active() &&
+      unknown.value === input &&
+      authorizationEpoch === epoch
+    )
+      fail(cause);
   } finally {
     if (reads.active()) checking.value = false;
   }

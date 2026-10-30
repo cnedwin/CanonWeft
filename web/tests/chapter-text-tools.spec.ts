@@ -96,6 +96,10 @@ async function fixture(
   let historyStatus = 200,
     holdHistory = false,
     loseCheckpoint = false;
+  let holdCheckpoint = false,
+    holdOperation = false,
+    checkpointReplies = 0,
+    operationHolds = 0;
   const waiting: (() => void)[] = [];
   const server = createServer(async (request, response) => {
     const url = new URL(request.url!, "http://127.0.0.1");
@@ -130,6 +134,11 @@ async function fixture(
           text: draft.document.text,
         };
         history.unshift(item);
+        if (holdCheckpoint) {
+          holdCheckpoint = false;
+          await new Promise<void>((resolve) => waiting.push(resolve));
+        }
+        checkpointReplies++;
         if (loseCheckpoint) {
           loseCheckpoint = false;
           response.writeHead(201, { "Content-Type": "application/json" });
@@ -157,6 +166,11 @@ async function fixture(
           };
       if (holdHistory && id) {
         holdHistory = false;
+        await new Promise<void>((resolve) => waiting.push(resolve));
+      }
+      if (holdOperation && url.searchParams.has("operation_id")) {
+        holdOperation = false;
+        operationHolds++;
         await new Promise<void>((resolve) => waiting.push(resolve));
       }
       return json(result ?? { error: "版本不存在" }, result ? 200 : 404);
@@ -328,6 +342,14 @@ async function fixture(
     loseCheckpoint: () => {
       loseCheckpoint = true;
     },
+    holdCheckpoint: () => {
+      holdCheckpoint = true;
+    },
+    holdOperation: () => {
+      holdOperation = true;
+    },
+    checkpointReplies: () => checkpointReplies,
+    operationHolds: () => operationHolds,
     original: structuredClone(document),
     previousId,
     nextId,
@@ -1492,4 +1514,103 @@ test("换行选区双向映射及保存核对仅接受确切下一版或原基�
       resource: { ...remote.resource, id: "other" },
     }),
   ).toBe("diverged");
+});
+
+test("留版响应悬挂转为待核对，不取消或重发写请求", async ({ page }, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page.clock.install();
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "章节修订历史",
+      exact: true,
+    });
+    state.holdCheckpoint();
+    await panel
+      .getByRole("button", { name: "保存当前版本", exact: true })
+      .click();
+    await expect.poll(() => state.history.length).toBe(1);
+    await page.clock.runFor(15010);
+    await expect(
+      panel.getByRole("button", { name: "核对留版结果", exact: true }),
+    ).toBeEnabled();
+    await panel
+      .getByRole("button", { name: "核对留版结果", exact: true })
+      .click();
+    await expect(panel.getByText("版本已留存", { exact: false })).toBeVisible();
+    expect(
+      state.calls.filter(
+        (v) => v.path.endsWith("/history") && v.method === "POST",
+      ),
+    ).toHaveLength(1);
+    expect(state.checkpointReplies()).toBe(0);
+    state.release();
+    await expect.poll(() => state.checkpointReplies()).toBe(1);
+  } finally {
+    await state.close();
+  }
+});
+
+test("权限拒绝后迟到留版和核对回执不能复原受保护历史", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "章节修订历史",
+      exact: true,
+    });
+    const note = panel.getByLabel("版本备注", { exact: true });
+    for (const mode of ["write", "read"]) {
+      await note.fill("权限撤销前尚未确认的备注");
+      if (mode === "write") state.holdCheckpoint();
+      else state.loseCheckpoint();
+      await panel
+        .getByRole("button", { name: "保存当前版本", exact: true })
+        .click();
+      await expect
+        .poll(() => state.history.length)
+        .toBe(mode === "write" ? 1 : 2);
+      if (mode === "read") {
+        state.holdOperation();
+        await panel
+          .getByRole("button", { name: "核对留版结果", exact: true })
+          .click();
+        await expect.poll(() => state.operationHolds()).toBe(1);
+      }
+      state.historyStatus(403);
+      await panel
+        .getByRole("button", { name: "刷新修订历史", exact: true })
+        .click();
+      await expect(panel.getByRole("alert")).toContainText("权限");
+      state.historyStatus(200);
+      state.release();
+      await expect
+        .poll(() => state.checkpointReplies())
+        .toBe(mode === "write" ? 1 : 2);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await expect(note).toHaveValue("权限撤销前尚未确认的备注");
+      await expect(
+        panel.getByLabel("历史版本", { exact: true }).locator("option"),
+      ).toHaveCount(1);
+      await panel
+        .getByRole("button", { name: "核对留版结果", exact: true })
+        .click();
+      await expect(
+        panel.getByText("版本已留存", { exact: false }),
+      ).toBeVisible();
+    }
+  } finally {
+    await state.close();
+  }
 });
