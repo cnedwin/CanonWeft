@@ -326,7 +326,7 @@ func (s *IP) validateManifest(ctx context.Context, tx *sql.Tx, project string, m
 		if resource.BranchID != manifest.BranchID {
 			return domain.ErrForbidden
 		}
-		if resource.Kind == "novel_review_dispositions" || resource.Kind == chapterHistoryKind {
+		if resource.Kind == "novel_review_dispositions" || resource.Kind == chapterHistoryKind || manuscriptPrivateKind(resource.Kind) {
 			return fmt.Errorf("%w：作者审稿整改记录不能发布为作品或资料", domain.ErrValidation)
 		}
 		if ref.Policy != nil && ref.Policy.Withdrawn && resource.Kind != "note" && resource.Kind != "source" {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"novelstudio/internal/domain"
 	"novelstudio/internal/objectwriter"
+	"novelstudio/internal/retention"
 	"novelstudio/internal/retrieval"
 	"strings"
 )
@@ -115,6 +116,25 @@ func (s *IP) storeSourceImport(ctx context.Context, a domain.Actor, project, bra
 	}
 	if err = s.captureImportSourceTx(ctx, tx, project, "source_imports", result.ID); err != nil {
 		return result, err
+	}
+	if report.Parser == retrieval.ManuscriptParser {
+		// An existing author-draft retention root keeps the original bytes and
+		// report together. It does not turn imported prose into knowledge/canon.
+		b, e := branchTx(ctx, tx, project, branch)
+		if e != nil {
+			return result, e
+		}
+		content := domain.ImportDraftContent{BaseIPHead: b.Head, OperationID: "manuscript-source-" + result.ID, Policy: &domain.KnowledgePolicy{Space: "working", Visibility: "author"}}
+		payload, e := json.Marshal(content)
+		if e != nil {
+			return result, e
+		}
+		if _, e = tx.ExecContext(ctx, "INSERT INTO import_drafts(import_id,actor_id,project_id,revision,payload,content_hash) VALUES(?,?,?,1,?,?)", result.ID, a.ID, project, payload, digest(string(payload))); e != nil {
+			return result, e
+		}
+		if e = s.captureSourceValuesTx(ctx, tx, project, retention.SourceKey{Table: "import_drafts", Primary: map[string]string{"import_id": result.ID, "actor_id": a.ID}}); e != nil {
+			return result, e
+		}
 	}
 	return result, tx.Commit()
 }

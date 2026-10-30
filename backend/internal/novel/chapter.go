@@ -11,6 +11,7 @@ import (
 )
 
 type ChapterDocument struct {
+	Unplanned          bool                 `json:"unplanned,omitempty"`
 	References         []ChapterReference   `json:"references,omitempty"`
 	Schema             int                  `json:"schema"`
 	ChapterID          string               `json:"chapter_id"`
@@ -42,7 +43,11 @@ func (d ChapterDocument) Validate() error {
 			}
 		}
 	}
-	if d.Schema != 1 || !planID.MatchString(d.ChapterID) || !planID.MatchString(d.BodyID) || d.Detail.Kind != "resource" || !planID.MatchString(d.Detail.ID) || !planID.MatchString(d.Detail.BranchID) || !planID.MatchString(d.Detail.Revision) || !planHash.MatchString(d.Detail.Hash) || d.SettingsRevision < 1 || !planHash.MatchString(d.SettingsHash) || (d.IPHead != "" && !planID.MatchString(d.IPHead)) || d.StoryTime < 0 || d.StoryTime > 9007199254740991 || len(d.Perspective) > 128 || (d.WriterGenerationID != "" && !planID.MatchString(d.WriterGenerationID)) || utf8.RuneCountInString(d.Title) > 300 || utf8.RuneCountInString(d.Text) > 100000 {
+	detailValid := d.Detail.Kind == "resource" && planID.MatchString(d.Detail.ID) && planID.MatchString(d.Detail.BranchID) && planID.MatchString(d.Detail.Revision) && planHash.MatchString(d.Detail.Hash)
+	if d.Unplanned {
+		detailValid = d.Detail == (domain.DependencyRef{}) && d.WriterGenerationID == ""
+	}
+	if d.Schema != 1 || !planID.MatchString(d.ChapterID) || !planID.MatchString(d.BodyID) || !detailValid || d.SettingsRevision < 1 || !planHash.MatchString(d.SettingsHash) || (d.IPHead != "" && !planID.MatchString(d.IPHead)) || d.StoryTime < 0 || d.StoryTime > 9007199254740991 || len(d.Perspective) > 128 || (d.WriterGenerationID != "" && !planID.MatchString(d.WriterGenerationID)) || !utf8.ValidString(d.Text) || !utf8.ValidString(d.Title) || utf8.RuneCountInString(d.Title) > 300 || utf8.RuneCountInString(d.Text) > 100000 {
 		return domain.ErrValidation
 	}
 	return nil
@@ -59,6 +64,9 @@ type ChapterReference struct {
 
 func ChapterDependencies(d ChapterDocument) domain.DependencyPolicy {
 	deps := domain.DependencyPolicy{Inputs: []domain.Dependency{{Kind: "production", Source: d.Detail, Reason: "本章已确认细纲"}}}
+	if d.Unplanned {
+		deps.Inputs = []domain.Dependency{}
+	}
 	for _, ref := range d.References {
 		deps.Inputs = append(deps.Inputs, domain.Dependency{Kind: "evidence", Source: ref.Source, Reason: "本章明确采用的专业参考与出处"})
 	}

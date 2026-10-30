@@ -79,7 +79,7 @@ func (s *IP) saveResourceDraftTx(ctx context.Context, tx *sql.Tx, a domain.Actor
 	if err != nil {
 		return draft, err
 	}
-	if r.Kind == chapterHistoryKind {
+	if r.Kind == chapterHistoryKind || manuscriptPrivateKind(r.Kind) {
 		return draft, domain.ErrForbidden
 	}
 	var revision int64

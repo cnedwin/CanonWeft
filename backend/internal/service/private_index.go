@@ -69,7 +69,7 @@ func (s *Knowledge) privateManifest(ctx context.Context, tx *sql.Tx, actor, proj
 	}
 	info.Manifest.Head = b.Head
 	rows, err := tx.QueryContext(ctx, `SELECT kind,id,version FROM (
- SELECT 'resource_draft' AS kind,r.id,CAST(d.revision AS CHAR) AS version FROM resource_drafts d JOIN resources r ON r.id=d.resource_id WHERE r.project_id=? AND r.branch_id=? AND d.actor_id=? AND r.kind NOT IN ('novel_review_dispositions','novel_chapter_history')
+ SELECT 'resource_draft' AS kind,r.id,CAST(d.revision AS CHAR) AS version FROM resource_drafts d JOIN resources r ON r.id=d.resource_id WHERE r.project_id=? AND r.branch_id=? AND d.actor_id=? AND r.kind NOT IN ('novel_review_dispositions','novel_chapter_history','novel_manuscript_import','novel_manuscript_progress')
  UNION ALL SELECT 'ip_draft',branch_id,CAST(revision AS CHAR) FROM ip_drafts WHERE branch_id=? AND actor_id=?
  UNION ALL SELECT 'ip_candidate',id,content_hash FROM ip_revisions WHERE branch_id=? AND status IN ('PREPARED','READY')
  UNION ALL SELECT 'release_candidate',id,content_hash FROM artifact_releases WHERE project_id=? AND branch_id=? AND status IN ('PREPARED','READY')

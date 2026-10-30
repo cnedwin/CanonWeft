@@ -167,6 +167,9 @@ func (s *NovelChapters) validateDocumentTx(ctx context.Context, tx *sql.Tx, book
 	if err := d.Validate(); err != nil {
 		return err
 	}
+	if d.Unplanned {
+		return fmt.Errorf("%w：导入私稿尚未确认规划，可以手动编辑；续写和发布前请先确认细纲并更新写作依据", domain.ErrNotReady)
+	}
 	check, err := newPlanningCheck(ctx, tx, s.IP, book.ProjectID, book.BranchID)
 	if err != nil {
 		return err
@@ -232,14 +235,23 @@ func (s *NovelChapters) Read(ctx context.Context, actor, bookID, id string) (Nov
 }
 
 func (s *NovelChapters) Save(ctx context.Context, actor, bookID, id string, in NovelChapterDraft) (NovelChapterDraft, error) {
+	tx, a, book, err := (&NovelPlanning{IP: s.IP}).begin(ctx, actor, bookID, true)
+	if err != nil {
+		return in, err
+	}
+	defer tx.Rollback()
+	out, err := s.saveTx(ctx, tx, a, book, id, in)
+	if err != nil {
+		return out, err
+	}
+	return out, tx.Commit()
+}
+
+func (s *NovelChapters) saveTx(ctx context.Context, tx *sql.Tx, a domain.Actor, book NovelBook, id string, in NovelChapterDraft) (NovelChapterDraft, error) {
 	if in.HistoryReason != "" && in.HistoryReason != "before_restore" && in.HistoryReason != "before_replace" {
 		return in, domain.ErrValidation
 	}
 	if err := in.Document.Validate(); err != nil {
-		return in, err
-	}
-	tx, a, book, err := (&NovelPlanning{IP: s.IP}).begin(ctx, actor, bookID, true)
-	if err != nil {
 		return in, err
 	}
 	old, err := s.draftTx(ctx, tx, a, book, id)
@@ -257,7 +269,7 @@ func (s *NovelChapters) Save(ctx context.Context, actor, bookID, id string, in N
 	}
 	if in.Document.WriterGenerationID != "" {
 		g, e := generationTx(ctx, tx, book.ProjectID, in.Document.WriterGenerationID)
-		if e != nil || g.ActorID != actor || g.BranchID != book.BranchID || g.Frozen.Role != "writer" || g.Frozen.NovelChapter == nil || g.Frozen.NovelChapter.ResourceID != id || g.State != "SUCCEEDED" || g.Cancelled {
+		if e != nil || g.ActorID != a.ID || g.BranchID != book.BranchID || g.Frozen.Role != "writer" || g.Frozen.NovelChapter == nil || g.Frozen.NovelChapter.ResourceID != id || g.State != "SUCCEEDED" || g.Cancelled {
 			tx.Rollback()
 			return in, domain.ErrConflict
 		}
@@ -276,7 +288,7 @@ func (s *NovelChapters) Save(ctx context.Context, actor, bookID, id string, in N
 	}
 	// Stale prose remains editable; only an explicit basis refresh can replace
 	// authority pins, and generation/publication recheck them against current state.
-	if !reflect.DeepEqual(old.Document.Detail, in.Document.Detail) || old.Document.SettingsRevision != in.Document.SettingsRevision || old.Document.SettingsHash != in.Document.SettingsHash || old.Document.IPHead != in.Document.IPHead {
+	if old.Document.Unplanned != in.Document.Unplanned || !reflect.DeepEqual(old.Document.Detail, in.Document.Detail) || old.Document.SettingsRevision != in.Document.SettingsRevision || old.Document.SettingsHash != in.Document.SettingsHash || old.Document.IPHead != in.Document.IPHead {
 		if err = s.validateDocumentTx(ctx, tx, book, in.Document); err != nil {
 			tx.Rollback()
 			return in, err
@@ -286,9 +298,8 @@ func (s *NovelChapters) Save(ctx context.Context, actor, bookID, id string, in N
 	if e := s.validateDocumentTx(ctx, tx, book, in.Document); e != nil {
 		in.Ready, in.Reason = false, e.Error()
 	}
-	tx.Rollback()
 	raw, _ := json.Marshal(in.Document)
-	draft, err := s.IP.SaveResourceDraft(ctx, a, book.ProjectID, id, ResourceDraft{Revision: in.Revision, BaseHead: in.BaseHead, Text: string(raw), Policy: &domain.KnowledgePolicy{Space: "working", Visibility: "author"}, historyReason: in.HistoryReason, historySource: &chapterHistorySource{old.Document, old.Revision, old.Hash, old.BaseHead}})
+	draft, err := s.IP.saveResourceDraftTx(ctx, tx, a, book.ProjectID, id, ResourceDraft{Revision: in.Revision, BaseHead: in.BaseHead, Text: string(raw), Policy: &domain.KnowledgePolicy{Space: "working", Visibility: "author"}, historyReason: in.HistoryReason, historySource: &chapterHistorySource{old.Document, old.Revision, old.Hash, old.BaseHead}})
 	if err != nil {
 		return in, err
 	}
@@ -333,6 +344,7 @@ func (s *NovelChapters) Basis(ctx context.Context, actor, bookID, id string, rev
 		return d, err
 	}
 	d.Document.Detail = planPin(r)
+	d.Document.Unplanned = false
 	d.Document.SettingsRevision = check.settingsRevision
 	d.Document.SettingsHash = check.settingsHash
 	d.Document.IPHead = check.head

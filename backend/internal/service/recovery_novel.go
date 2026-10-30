@@ -23,7 +23,7 @@ var recoveryNovelTables = []recoveryTable{
 
 // Called only within the owning recovery transaction, after its IP graph exists.
 // A bad/missing settings version fails the whole copy; it never drops the book.
-func (s *IP) copyRecoveryNovelsTx(ctx context.Context, tx *sql.Tx, actor domain.Actor, ids RecoveryIPIDs) error {
+func (s *IP) copyRecoveryNovelsTx(ctx context.Context, tx *sql.Tx, actor domain.Actor, ids RecoveryIPIDs, recoveredBooks map[string]string) error {
 	var schema int
 	if err := tx.QueryRowContext(ctx, "SELECT version FROM schema_version WHERE id=1").Scan(&schema); err != nil {
 		return err
@@ -150,6 +150,9 @@ func (s *IP) copyRecoveryNovelsTx(ctx context.Context, tx *sql.Tx, actor domain.
 				return err
 			}
 		}
+	}
+	for old, id := range bookIDs {
+		recoveredBooks[old] = id
 	}
 	return nil
 }

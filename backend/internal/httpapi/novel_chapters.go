@@ -15,6 +15,7 @@ func registerNovelChapters(g *echo.Group, workspace *service.Workspace, actor fu
 	svc := &service.NovelChapters{IP: ip}
 	registerNovelChapterReferences(g, svc, actor)
 	registerNovelChapterHistory(g, svc, actor)
+	registerNovelManuscripts(g, ip, actor)
 	g.POST("/novels/:novel/prose-search", func(c *echo.Context) error {
 		var in service.NovelProseSearchInput
 		if err := decode(c, &in); err != nil {

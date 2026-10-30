@@ -2,6 +2,7 @@ package retention
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 
 	"novelstudio/internal/retrieval"
@@ -42,7 +43,7 @@ func (index *SourceIndex) attachIngestSources(ctx context.Context, project strin
 			}
 		} else {
 			var report retrieval.ImportReport
-			if authorDocument(row.Values["report"], &report) != nil {
+			if sourceImportReportDocument(row.Values["report"], &report) != nil {
 				return ErrSourceOwnership
 			}
 		}
@@ -58,6 +59,26 @@ func (index *SourceIndex) attachIngestSources(ctx context.Context, project strin
 		if err := b.link(row, "filename", ""); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func sourceImportReportDocument(raw string, report *retrieval.ImportReport) error {
+	if len(raw) <= 2<<20 {
+		if authorDocument(raw, report) != nil {
+			return ErrSourceOwnership
+		}
+	} else {
+		if boundedTypedJSON(raw, report, retrieval.ManuscriptMaxReport) != nil || report.Parser != retrieval.ManuscriptParser {
+			return ErrSourceOwnership
+		}
+		canonical, err := json.Marshal(report)
+		if err != nil || contentJSON([]byte(raw), report, financialDigest(canonical)) != nil {
+			return ErrSourceOwnership
+		}
+	}
+	if report.Parser == retrieval.ManuscriptParser && retrieval.ValidateManuscriptReport(*report) != nil {
+		return ErrSourceOwnership
 	}
 	return nil
 }

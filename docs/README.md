@@ -10,6 +10,7 @@
 - [便携运行时](PORTABLE_RUNTIME.md)、[社区版本基线](COMMUNITY_STACK_BASELINE.md)。
 - [模型与小说入口](MODELS_AND_NOVEL_ENTRY.md)、[协作创作与规划](ASSISTED_CREATION_AND_PLANNING.md)。
 - [角色协作](CHARACTER_ASSISTANCE.md)、[批量章节与编辑](NOVEL_BATCH_AND_EDITORIAL.md)、[起名与研究素材](CREATIVE_RESEARCH_AND_NAMING.md)。
+- [长稿分章导入与续导](MANUSCRIPT_IMPORT.md)：原稿保留、分章调整、重复核对、失败续导及恢复边界。
 
 ## 产品与需求
 

@@ -82,7 +82,7 @@ func (s *IP) Resources(ctx context.Context, a domain.Actor, project, branch stri
 	if _, err = branchTx(ctx, tx, project, branch); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT id,branch_id,name,kind,head_revision,content_hash,revision FROM resources WHERE project_id=? AND branch_id=? AND kind<>'novel_chapter_history' ORDER BY created_at,id", project, branch)
+	rows, err := tx.QueryContext(ctx, "SELECT id,branch_id,name,kind,head_revision,content_hash,revision FROM resources WHERE project_id=? AND branch_id=? AND kind NOT IN ('novel_chapter_history','novel_manuscript_import','novel_manuscript_progress') ORDER BY created_at,id", project, branch)
 	if err != nil {
 		return nil, err
 	}
