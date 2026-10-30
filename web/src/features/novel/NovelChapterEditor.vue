@@ -42,6 +42,7 @@ import NovelBasisComparison from "./NovelBasisComparison.vue";
 import NovelChapterOldDraft, {
   type OldDraftTake,
 } from "./NovelChapterOldDraft.vue";
+import NovelChapterHistory from "./NovelChapterHistory.vue";
 import { useBoundedReads } from "../../composables/useBoundedReads";
 import { validBasisPreview, type ChapterBasisPreview } from "./chapterBasis";
 import {
@@ -79,6 +80,9 @@ const assistant = ref(false),
   assistantBlocking = ref(false);
 const ledgerOpen = ref(false);
 const oldDraftOpen = ref(false);
+const historyOpen = ref(false),
+  historyBlocking = ref(false);
+const historyReason = ref<"" | "before_restore" | "before_replace">("");
 const oldDraftUndo = ref<{
   resourceId: string;
   beforeText: string;
@@ -322,6 +326,8 @@ const chapterNavigationBlocked = computed(
     assistantBlocking.value ||
     basisLoading.value ||
     oldDraftOpen.value ||
+    historyOpen.value ||
+    historyBlocking.value ||
     basisVisible.value ||
     !!refinementEditor.value?.hasInput() ||
     !!editorialEditor.value?.hasInput(),
@@ -358,6 +364,7 @@ function changeChapterText(value: ChapterTextChange) {
   )
     return;
   draft.value.document.text = value.text;
+  historyReason.value = "before_replace";
   notice.value =
     value.action === "undo"
       ? "已撤销这次章内替换，正在自动暂存正文。"
@@ -377,6 +384,7 @@ function takeOldDraft(value: OldDraftTake) {
     dirty.value ||
     saving.value ||
     unconfirmedSave.value ||
+    historyBlocking.value ||
     value.resourceId !== draft.value.resource.id ||
     value.revision !== draft.value.revision ||
     value.hash !== draft.value.hash ||
@@ -390,6 +398,7 @@ function takeOldDraft(value: OldDraftTake) {
     afterDocument: JSON.stringify(next),
   };
   draft.value.document.text = value.text;
+  historyReason.value = "before_restore";
   notice.value =
     "旧正文已取回，正在沿现有流程自动暂存为私人稿；其他写作信息保持原样，尚未重新记账、审稿或正式采用。";
 }
@@ -494,6 +503,7 @@ async function save(): Promise<void> {
   clearTimeout(timer);
   const current = draft.value,
     content = text.value;
+  const checkpointReason = historyReason.value;
   const attempt: ChapterSaveAttempt = {
     id: ++saveSequence,
     resourceId: current.resource.id,
@@ -513,6 +523,7 @@ async function save(): Promise<void> {
         revision: current.revision,
         base_head: current.base_head,
         document: JSON.parse(content),
+        ...(checkpointReason ? { history_reason: checkpointReason } : {}),
       },
     );
     if (disposed || draft.value?.resource.id !== current.resource.id) return;
@@ -530,6 +541,7 @@ async function save(): Promise<void> {
     draft.value.ready = result.ready;
     draft.value.reason = result.reason;
     saved.value = content;
+    if (historyReason.value === checkpointReason) historyReason.value = "";
   })();
   try {
     await pending;
@@ -587,6 +599,7 @@ async function resolveSave(value: ChapterSaveResolution) {
       ? attempt.content
       : JSON.stringify(value.remote.document);
   unconfirmedSave.value = null;
+  if (value.kind === "committed") historyReason.value = "";
   error.value = "";
   if (value.kind === "retry") await perform(save);
   else
@@ -607,6 +620,7 @@ async function perform(action: () => Promise<void>) {
   }
 }
 async function close() {
+  if (historyBlocking.value) return;
   await perform(async () => {
     await save();
     if (!disposed && !dirty.value && !assistantBlocking.value) emit("close");
@@ -921,6 +935,7 @@ async function adopt() {
     !suggestion.value ||
     !draft.value ||
     assistantBlocking.value ||
+    historyBlocking.value ||
     unconfirmedSave.value
   )
     return;
@@ -952,6 +967,7 @@ async function adopt() {
         revision: next.revision,
         base_head: next.base_head,
         document: next.document,
+        history_reason: "before_replace",
       },
     );
     if (disposed) return;
@@ -979,6 +995,7 @@ function unload(e: BeforeUnloadEvent) {
     dirty.value ||
     saving.value ||
     assistantBlocking.value ||
+    historyBlocking.value ||
     unconfirmedSave.value
   ) {
     e.preventDefault();
@@ -1147,6 +1164,15 @@ onBeforeUnmount(() => {
           对照与取回旧稿
         </button>
         <button
+          :disabled="
+            locked || assistant || !!unconfirmedSave || historyBlocking
+          "
+          @click="historyOpen = !historyOpen"
+          :aria-expanded="historyOpen"
+        >
+          章节修订历史
+        </button>
+        <button
           class="focus-keep"
           :disabled="busy || assistant || ledgerOpen"
           :aria-expanded="referenceOpen"
@@ -1187,6 +1213,20 @@ onBeforeUnmount(() => {
         @take="takeOldDraft"
         @undo="undoOldDraft"
         @close="oldDraftOpen = false"
+        @expired="emit('expired')"
+      />
+      <NovelChapterHistory
+        v-if="historyOpen"
+        v-show="!focusMode"
+        :book-id="book.id"
+        :current="draft"
+        :saved="!dirty && !saving && !unconfirmedSave"
+        :disabled="locked || assistant || !!unconfirmedSave"
+        :undo-available="canUndoOldDraft"
+        @take="takeOldDraft"
+        @undo="undoOldDraft"
+        @blocking="historyBlocking = $event"
+        @close="historyOpen = false"
         @expired="emit('expired')"
       />
       <NovelBasisComparison

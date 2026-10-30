@@ -10,10 +10,12 @@ import (
 )
 
 type ResourceDraft struct {
-	Policy   *domain.KnowledgePolicy `json:"policy,omitempty"`
-	Revision int64                   `json:"revision"`
-	BaseHead string                  `json:"base_head"`
-	Text     string                  `json:"text"`
+	historyReason string
+	historySource *chapterHistorySource
+	Policy        *domain.KnowledgePolicy `json:"policy,omitempty"`
+	Revision      int64                   `json:"revision"`
+	BaseHead      string                  `json:"base_head"`
+	Text          string                  `json:"text"`
 }
 
 func (s *IP) ReadResourceDraft(ctx context.Context, a domain.Actor, project, id string) (ResourceDraft, error) {
@@ -73,16 +75,23 @@ func (s *IP) saveResourceDraftTx(ctx context.Context, tx *sql.Tx, a domain.Actor
 	if draft.Policy != nil && draft.Policy.Validate() != nil {
 		return draft, domain.ErrValidation
 	}
-	if _, err := resourceTx(ctx, tx, project, id); err != nil {
+	r, err := resourceTx(ctx, tx, project, id)
+	if err != nil {
 		return draft, err
 	}
+	if r.Kind == chapterHistoryKind {
+		return draft, domain.ErrForbidden
+	}
 	var revision int64
-	err := tx.QueryRowContext(ctx, "SELECT revision FROM resource_drafts WHERE resource_id=? AND actor_id=? FOR UPDATE", id, a.ID).Scan(&revision)
+	err = tx.QueryRowContext(ctx, "SELECT revision FROM resource_drafts WHERE resource_id=? AND actor_id=? FOR UPDATE", id, a.ID).Scan(&revision)
 	if err != nil && err != sql.ErrNoRows {
 		return draft, err
 	}
 	if revision != draft.Revision {
 		return draft, domain.ErrConflict
+	}
+	if err = s.checkpointChapterSaveTx(ctx, tx, a, project, r, draft); err != nil {
+		return draft, err
 	}
 	sources := []retention.SourceKey{
 		{Table: "resource_drafts", Primary: map[string]string{"resource_id": id, "actor_id": a.ID}, IfPresent: true},
