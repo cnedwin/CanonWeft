@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
+import { openSkillsSection } from "./skills-navigation-helper";
 
 test("外部技能与起名素材可复制编辑，显示固定来源版本", async ({ page }) => {
   await loginAsOwner(page);
@@ -10,6 +11,7 @@ test("外部技能与起名素材可复制编辑，显示固定来源版本", as
   await page
     .getByRole("button", { name: "Skill 研究与编辑", exact: true })
     .click();
+  await openSkillsSection(page, "方法包与版本");
   await page.getByText("随系统提供的完整方法包", { exact: true }).click();
   const outline = page
     .locator("article")
@@ -22,11 +24,9 @@ test("外部技能与起名素材可复制编辑，显示固定来源版本", as
   await outline.getByRole("button", { name: "复制到本项目后编辑" }).click();
   await expect(page.locator(".version-card")).toHaveCount(1);
   await expect(page.getByLabel("文件内容")).toHaveValue(/name: novel-outline/);
-  const names = page
-    .locator("article")
-    .filter({
-      has: page.getByRole("heading", { name: "character-naming", exact: true }),
-    });
+  const names = page.locator("article").filter({
+    has: page.getByRole("heading", { name: "character-naming", exact: true }),
+  });
   await names.getByRole("button", { name: "复制到本项目后编辑" }).click();
   await expect(page.locator(".version-card")).toHaveCount(2);
   await expect(page.getByLabel("文件内容")).toHaveValue(
@@ -47,6 +47,7 @@ test("技能方法编辑保留旧稿，来源撤销阻止派生引用", async ({
   await page
     .getByRole("button", { name: "Skill 研究与编辑", exact: true })
     .click();
+  await openSkillsSection(page, "方法包与版本");
   await page.getByRole("button", { name: "手工编写 Skill" }).click();
   const original =
     "---\nname: evidence-method\ndescription: Use when checking story sources.\nlicense: LicenseRef-Private\n---\n区分陈述和事实，只提出候选；不能发布。";

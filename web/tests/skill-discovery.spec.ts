@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
+import { openSkillsSection } from "./skills-navigation-helper";
 
 test("发现来源版本冲突保留输入，停用后仍可编辑已有方法", async ({ page }) => {
   await loginAsOwner(page);
@@ -10,6 +11,7 @@ test("发现来源版本冲突保留输入，停用后仍可编辑已有方法",
   await page
     .getByRole("button", { name: "Skill 研究与编辑", exact: true })
     .click();
+  await openSkillsSection(page, "来源发现");
   await expect(
     page.getByRole("heading", { name: "允许来源内自动发现" }),
   ).toBeVisible();
@@ -56,6 +58,7 @@ test("发现来源版本冲突保留输入，停用后仍可编辑已有方法",
   await page.getByRole("button", { name: "保存来源修改" }).click();
   await expect(source).toContainText("my-unsaved-filter");
   await expect(source.getByRole("button", { name: "立即发现" })).toBeDisabled();
+  await openSkillsSection(page, "方法包与版本");
   await page.getByRole("button", { name: "手工编写 Skill" }).click();
   await page
     .getByLabel("新方法 SKILL.md")

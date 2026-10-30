@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAsOwner } from "./owner-session";
-import { openIPSection } from "./ip-edit-helper";
+import { openIPTool } from "./ip-edit-helper";
 
 // Real app/project/branch; model output and repair endpoints are controlled UI
 // fixtures. The separate MySQL test proves actual provenance and preparation.
@@ -61,7 +61,7 @@ async function openRepair(page: Page) {
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
-  await openIPSection(page, "知识与任务");
+  await openIPTool(page, "AI候选");
   const panel = page.locator(".generation-panel");
   await panel.getByRole("button", { name: "查看任务 aaaaaa" }).click();
   await panel.getByLabel("希望 AI 协助的内容").fill("保留作者未保存的想法");

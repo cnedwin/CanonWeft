@@ -49,6 +49,7 @@ const emit = defineEmits<{
   expired: [];
   blocking: [value: boolean];
   open: [id: string, previous: string];
+  attention: [value: { unknown: number; review: number; active: number }];
 }>();
 const root = computed(() => `/projects/${props.project.id}/skill-discovery`);
 const data = ref<Overview>({ sources: [], runs: [], candidates: [] });
@@ -67,6 +68,28 @@ const operation = ref(newOperationID());
 const busy = ref(false);
 const error = ref("");
 const notice = ref("");
+const query = ref("");
+const sourceState = ref("");
+const taskAttention = computed(() => ({
+  unknown: data.value.runs.filter((run) => run.state === "UNKNOWN").length,
+  review: 0,
+  active: data.value.runs.filter((run) =>
+    ["QUEUED", "RUNNING"].includes(run.state),
+  ).length,
+}));
+watch(taskAttention, (value) => emit("attention", value));
+const filteredSources = computed(() => {
+  const text = query.value.trim().toLocaleLowerCase();
+  return data.value.sources.filter(
+    (source) =>
+      (!sourceState.value ||
+        (sourceState.value === "enabled" ? source.enabled : !source.enabled)) &&
+      (!text ||
+        [source.repository, source.path, source.keyword, source.ref].some(
+          (value) => value.toLocaleLowerCase().includes(text),
+        )),
+  );
+});
 const dirty = computed(() => JSON.stringify(form.value) !== baseline.value);
 const canEdit = computed(
   () =>
@@ -210,8 +233,13 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <section class="panel discovery-panel" aria-labelledby="discovery-title">
-    <h2 id="discovery-title">允许来源内自动发现</h2>
-    <p>
+    <header class="section-heading">
+      <div>
+        <p class="eyebrow">登记来源 · 静态分析 · 人工检查</p>
+        <h2 id="discovery-title">允许来源内自动发现</h2>
+      </div>
+    </header>
+    <p class="author-page-description">
       只读取登记的公开 GitHub 仓库，每日发现完整 SKILL.md
       目录。任务关键词只在本地筛选，不发送小说或目标内容；不执行包内脚本，不调用付费模型。
     </p>
@@ -221,6 +249,16 @@ onBeforeUnmount(() => {
     </p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
+    <p class="discovery-boundary">
+      发现和下载只保留研究候选，不会自动采用、安装或执行。既有来源开关与每次发现仍沿原授权和限额检查。
+    </p>
+    <p
+      v-if="taskAttention.unknown || taskAttention.active"
+      class="discovery-boundary"
+    >
+      已读取的最近任务：结果未知 {{ taskAttention.unknown }} 项 · 进行中
+      {{ taskAttention.active }} 项。请在持久任务记录中核对状态。
+    </p>
     <details v-if="canEdit" open>
       <summary>{{ editing ? "修改登记来源" : "登记公开来源" }}</summary>
       <p>
@@ -275,8 +313,27 @@ onBeforeUnmount(() => {
     <p v-if="!data.sources.length" class="muted">
       尚未登记来源；已有方法包仍可使用和编辑。
     </p>
+    <div class="source-filters">
+      <label
+        >搜索登记来源<input
+          v-model="query"
+          type="search"
+          aria-label="搜索技能发现来源"
+          placeholder="仓库、目录或关键词" /></label
+      ><label
+        >来源状态<select v-model="sourceState" aria-label="筛选技能来源状态">
+          <option value="">全部状态</option>
+          <option value="enabled">已启用每日发现</option>
+          <option value="disabled">已停用</option>
+        </select></label
+      >
+    </div>
+    <p class="muted">
+      当前显示 {{ filteredSources.length }} /
+      {{ data.sources.length }} 个已读取来源
+    </p>
     <article
-      v-for="source in data.sources"
+      v-for="source in filteredSources"
       :key="source.id"
       class="discovery-source"
     >
@@ -376,6 +433,24 @@ onBeforeUnmount(() => {
 <style scoped>
 .discovery-panel {
   margin-block: 1rem;
+}
+.source-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding-top: 20px;
+  border-top: 1px solid #e1e5da;
+}
+.discovery-boundary {
+  padding: 14px 16px;
+  background: #f5f6ef;
+  border-left: 3px solid #91ad98;
+  font-size: 13px;
+}
+@media (max-width: 680px) {
+  .source-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .discovery-fields {
   display: grid;

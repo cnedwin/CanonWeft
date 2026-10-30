@@ -27,6 +27,9 @@ const emit = defineEmits<{
   expired: [];
   blocking: [boolean];
   busy: [boolean];
+  attention: [
+    value: { scope: string; unknown: number; review: number; active: number },
+  ];
 }>();
 type Option = {
   role: string;
@@ -99,6 +102,27 @@ const activeSteps = computed(
 const oldSteps = computed(
   () => selected.value?.steps?.filter((s) => !s.active) ?? [],
 );
+const taskAttention = computed(() => {
+  const known = new Map(
+    runs.value
+      .filter((run) => run.branch_id === branchID.value)
+      .map((run) => [run.id, run]),
+  );
+  if (selected.value?.branch_id === branchID.value)
+    known.set(selected.value.id, selected.value);
+  const values = [...known.values()];
+  return {
+    scope: `recipe:${props.capability.id}:${branchID.value}`,
+    unknown: values.filter(
+      (run) => run.state === "UNKNOWN" || run.uncertain_calls > 0,
+    ).length,
+    review: values.filter((run) => run.state === "WAITING_CONFIRMATION").length,
+    active: values.filter((run) => run.state === "RUNNING").length,
+  };
+});
+watch(taskAttention, (value) => {
+  if (branchID.value) emit("attention", value);
+});
 let disposed = false,
   restoring = true,
   reading = false,

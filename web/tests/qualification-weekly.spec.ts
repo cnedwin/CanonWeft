@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
+import { openSkillsSection } from "./skills-navigation-helper";
 
 test("每周评测保存范围重挂载可直接停用，范围替换明确且周开关金额保护未保存修改", async ({
   page,
@@ -70,6 +71,7 @@ test("每周评测保存范围重挂载可直接停用，范围替换明确且�
   await page
     .getByRole("button", { name: "Skill 研究与编辑", exact: true })
     .click();
+  await openSkillsSection(page, "独立评测与绑定");
   const panel = page.getByRole("region", { name: "独立评测与用途启用" });
   await panel
     .getByText("项目每周评测（默认关闭付费）", { exact: true })
@@ -130,6 +132,7 @@ test("每周评测保存范围重挂载可直接停用，范围替换明确且�
   await page
     .getByRole("button", { name: "Skill 研究与编辑", exact: true })
     .click();
+  await openSkillsSection(page, "独立评测与绑定");
   await panel
     .getByText("项目每周评测（默认关闭付费）", { exact: true })
     .click();

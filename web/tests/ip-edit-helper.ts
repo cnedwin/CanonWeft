@@ -10,6 +10,28 @@ export async function openIPSection(
     .click();
 }
 
+export async function openIPTool(
+  page: Page,
+  name: "资料检索" | "创作记忆" | "AI候选" | "流程检查",
+) {
+  await openIPSection(page, "知识与任务");
+  await page
+    .getByRole("navigation", { name: "知识与任务分区", exact: true })
+    .getByRole("button", { name, exact: true })
+    .click();
+}
+
+export async function openKnowledgeView(
+  page: Page,
+  name: "检索资料" | "索引任务",
+) {
+  await openIPTool(page, "资料检索");
+  await page
+    .getByRole("navigation", { name: "知识检索分区", exact: true })
+    .getByRole("button", { name, exact: true })
+    .click();
+}
+
 // Drive the same explicit per-change explanation form used by people.
 export async function saveReasonedCandidate(page: Page) {
   await openIPSection(page, "设定草稿");

@@ -1,5 +1,9 @@
 import { loginAsOwner } from "./owner-session";
-import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
+import {
+  openIPSection,
+  openKnowledgeView,
+  saveReasonedCandidate,
+} from "./ip-edit-helper";
 import { test, expect } from "@playwright/test";
 import { openModelSettingsSection } from "./model-settings-helper";
 
@@ -84,12 +88,13 @@ test("价格版本与生成估算可保存，付费关闭时执行被拒绝", as
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
-  await openIPSection(page, "知识与任务");
+  await openKnowledgeView(page, "索引任务");
   await page.getByRole("button", { name: "构建 / 更新检索索引" }).click();
   await expect(page.getByText("索引已就绪，共 0 个原文片段。")).toBeVisible();
+  await openKnowledgeView(page, "检索资料");
   await page.getByLabel("要查找的线索").fill("规划世界的基础设定");
   await page.getByRole("button", { name: "查找并保存证据包" }).click();
-  await page.getByRole("button", { name: "用于下方 AI 候选任务" }).click();
+  await page.getByRole("button", { name: "用于 AI 候选任务" }).click();
   await page.getByLabel("候选用途", { exact: true }).selectOption("writer");
   await page
     .getByLabel("固定角色版本", { exact: true })

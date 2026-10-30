@@ -1,6 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
-import { openIPSection } from "./ip-edit-helper";
+import { openIPSection, openKnowledgeView } from "./ip-edit-helper";
 
 test("私人工作区可持久构建、语义检索、核对原文并拒绝过期索引", async ({
   page,
@@ -25,13 +25,14 @@ test("私人工作区可持久构建、语义检索、核对原文并拒绝过�
   await expect(
     page.getByText("草稿已暂存；发布后才成为正式资料"),
   ).toBeVisible();
-  await openIPSection(page, "知识与任务");
+  await openKnowledgeView(page, "索引任务");
   await page
     .getByRole("button", { name: "构建 / 更新检索索引", exact: true })
     .click();
   await expect(
     page.getByText("索引已就绪，共 0 个原文片段。", { exact: true }),
   ).toBeVisible();
+  await openKnowledgeView(page, "检索资料");
   await page.getByLabel("明确纳入项目工作资料").check();
   await page
     .getByLabel("在我的草稿与可访问候选中进行语义检索", { exact: true })
@@ -50,7 +51,7 @@ test("私人工作区可持久构建、语义检索、核对原文并拒绝过�
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库", exact: true }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
-  await openIPSection(page, "知识与任务");
+  await openKnowledgeView(page, "检索资料");
   await page.getByLabel("明确纳入项目工作资料").check();
   await page
     .getByLabel("在我的草稿与可访问候选中进行语义检索", { exact: true })
@@ -86,7 +87,7 @@ test("私人工作区可持久构建、语义检索、核对原文并拒绝过�
   await expect(
     page.getByText("草稿已暂存；发布后才成为正式资料"),
   ).toBeVisible();
-  await openIPSection(page, "知识与任务");
+  await openKnowledgeView(page, "检索资料");
   await page
     .getByRole("button", { name: "查找并保存证据包", exact: true })
     .click();

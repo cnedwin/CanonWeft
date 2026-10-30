@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
+import { openSkillsSection } from "./skills-navigation-helper";
 
 test("独立评测真实任务费用证据、启用回退与撤销，并保留未提交表单", async ({
   page,
@@ -81,6 +82,7 @@ test("独立评测真实任务费用证据、启用回退与撤销，并保留�
   await page
     .getByRole("button", { name: "Skill 研究与编辑", exact: true })
     .click();
+  await openSkillsSection(page, "独立评测与绑定");
   const panel = page.getByRole("region", { name: "独立评测与用途启用" });
   await panel
     .getByRole("button", { name: "准备可信初始对照", exact: true })

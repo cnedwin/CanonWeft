@@ -1,6 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
-import { openIPSection } from "./ip-edit-helper";
+import { openIPSection, openKnowledgeView } from "./ip-edit-helper";
 
 test("上传文字资料，经候选采用发布后做真实语义检索并回查原文", async ({
   page,
@@ -57,11 +57,12 @@ test("上传文字资料，经候选采用发布后做真实语义检索并回�
     "索引已就绪",
   );
   await page.getByRole("button", { name: "发布整组内容", exact: true }).click();
-  await openIPSection(page, "知识与任务");
+  await openKnowledgeView(page, "索引任务");
   await page
     .getByRole("button", { name: "构建 / 更新检索索引", exact: true })
     .click();
   await expect(page.getByText("索引已就绪，共 1 个原文片段。")).toBeVisible();
+  await openKnowledgeView(page, "检索资料");
   await page.getByLabel("要查找的线索").fill("侠客寻觅遗失的兵器");
   await page
     .getByRole("button", { name: "查找并保存证据包", exact: true })
@@ -73,6 +74,9 @@ test("上传文字资料，经候选采用发布后做真实语义检索并回�
   await expect(
     page.getByText("经核对的完整原文", { exact: true }),
   ).toBeVisible();
+  await page
+    .getByText("指定必须参考的完整资料 · 已选 0 份", { exact: true })
+    .click();
   await page.getByLabel("必须参考：洞穴记录.txt", { exact: true }).check();
   await page.getByLabel("要查找的线索").fill("无关的药剂条件");
   await page

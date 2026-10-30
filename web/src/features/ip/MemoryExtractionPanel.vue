@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import {
   api,
   APIError,
@@ -30,7 +37,22 @@ const props = defineProps<{
   sessionId: string;
   blocked: boolean;
 }>();
-const emit = defineEmits<{ imported: []; expired: []; blocking: [boolean] }>();
+const emit = defineEmits<{
+  imported: [];
+  expired: [];
+  blocking: [boolean];
+  attention: [count: number];
+}>();
+const panelElement = ref<HTMLDetailsElement | null>(null);
+const recordSelect = ref<HTMLSelectElement | null>(null);
+async function focusTasks() {
+  if (!panelElement.value) return;
+  panelElement.value.open = true;
+  await nextTick();
+  recordSelect.value?.focus({ preventScroll: true });
+  recordSelect.value?.scrollIntoView({ block: "center" });
+}
+defineExpose({ focusTasks });
 type Option = {
   role: string;
   name: string;
@@ -111,6 +133,22 @@ const options = ref<Option[]>([]),
 const runs = ref<RecipeRun[]>([]),
   selected = ref<RecipeRun | null>(null),
   selectedID = ref("");
+function needsAttention(run: RecipeRun) {
+  return (
+    run.state === "UNKNOWN" ||
+    run.uncertain_calls > 0 ||
+    !!run.steps?.some((step) => step.active && step.state === "UNKNOWN")
+  );
+}
+const uncertainRuns = computed(() => {
+  const known = new Map(runs.value.map((run) => [run.id, run]));
+  if (selected.value) known.set(selected.value.id, selected.value);
+  return [...known.values()].filter(needsAttention);
+});
+watch(
+  () => uncertainRuns.value.length,
+  (count) => emit("attention", count),
+);
 const chosen = ref<string[]>([]),
   busy = ref(false),
   error = ref(""),
@@ -434,7 +472,7 @@ async function importCandidates() {
     });
     if (disposed) return;
     notice.value =
-      "已加入当前私人会话。可在下方编辑内容、核对来源，再逐项采用。重复导入不会覆盖你的修改。";
+      "已加入当前私人会话。可在记忆浏览中编辑内容、核对来源，再逐项采用。重复导入不会覆盖你的修改。";
     preparationContext = null;
     emit("imported");
   });
@@ -499,11 +537,13 @@ onBeforeUnmount(() => {
   disposed = true;
   if (timer) clearInterval(timer);
   emit("blocking", false);
+  emit("attention", 0);
 });
 </script>
 
 <template>
   <details
+    ref="panelElement"
     class="extraction-panel"
     data-testid="memory-extraction"
     @toggle="openPanel"
@@ -512,6 +552,30 @@ onBeforeUnmount(() => {
     <p>
       提炼人物信息、章节摘要、伏笔和高光，保留来源。结果先进入你的私人候选，不会自动改变正史。
     </p>
+    <aside
+      v-if="uncertainRuns.length"
+      class="author-status"
+      aria-label="已读取的待核对记忆整理任务"
+    >
+      <p>
+        已读取的整理任务中有
+        {{ uncertainRuns.length }}
+        项结果或费用需核对。不自动重发，已有费用占用保留。
+      </p>
+      <button
+        v-for="run in uncertainRuns"
+        :key="run.id"
+        type="button"
+        class="quiet"
+        :disabled="locked"
+        @click="
+          selectedID = run.id;
+          perform(() => readRun(run.id));
+        "
+      >
+        查看待核对整理任务 {{ run.id.slice(0, 8) }}
+      </button>
+    </aside>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
     <fieldset :disabled="locked">
@@ -646,6 +710,7 @@ onBeforeUnmount(() => {
         刷新整理记录
       </button>
       <select
+        ref="recordSelect"
         v-model="selectedID"
         aria-label="选择整理记录"
         :disabled="locked"
@@ -662,6 +727,17 @@ onBeforeUnmount(() => {
         {{ recipeStates[selected.state] ?? selected.state }} · 上限
         {{ selected.budget_limit_micros / 1000000 }} {{ selected.currency }} ·
         已记账 {{ selected.spent_micros / 1000000 }} {{ selected.currency }}
+      </p>
+      <p
+        v-if="selected.held_micros || selected.uncertain_calls"
+        class="author-status"
+      >
+        当前任务占用 {{ (selected.held_micros ?? 0) / 1000000 }}
+        {{ selected.currency }} · 结果或用量未明确的调用
+        {{ selected.uncertain_calls ?? 0 }} 次
+      </p>
+      <p v-if="needsAttention(selected)" class="author-status">
+        请求结果或用量尚不明确，请先核对任务与账单；不自动重发或释放已有费用占用。
       </p>
       <p v-if="selected.reason">
         暂未继续：{{

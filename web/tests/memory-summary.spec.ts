@@ -1,6 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import type { MemoryItem } from "../src/features/ip/memory";
+
+async function openMemorySection(
+  page: Page,
+  name: "记忆浏览" | "整理候选" | "短期会话" | "写作材料",
+) {
+  await page
+    .getByRole("navigation", { name: "创作记忆分区", exact: true })
+    .getByRole("button", { name, exact: true })
+    .click();
+}
 
 for (const timeline of ["main", "past"]) {
   test(`增量待办锁定原摘要身份，父级等待确认，准备使用专用修复范围 ${timeline}`, async ({
@@ -117,6 +127,7 @@ for (const timeline of ["main", "past"]) {
       return route.fulfill({ json: { items: [] } });
     });
     await page.goto("/tests/fixtures/memory-panel.html");
+    await openMemorySection(page, "整理候选");
     const panel = page.getByTestId("memory-extraction");
     await panel.getByText("从作品资料整理记忆", { exact: true }).click();
     await expect(
@@ -148,6 +159,7 @@ for (const timeline of ["main", "past"]) {
     revisionChanged = true;
     extraction = null;
     await page.reload();
+    await openMemorySection(page, "整理候选");
     await panel.getByText("从作品资料整理记忆", { exact: true }).click();
     await expect(panel.getByLabel("增量重整")).toHaveValue("ready-task");
     await panel
@@ -280,6 +292,7 @@ test("分卷整理选择下层摘要，历史来源可下钻，手改保留结�
   });
   await page.goto("/tests/fixtures/memory-panel.html");
   await page.getByLabel("当前工作会话").selectOption("session-1");
+  await openMemorySection(page, "整理候选");
   const panel = page.getByTestId("memory-extraction");
   await panel.getByText("从作品资料整理记忆", { exact: true }).click();
   await panel.getByLabel("整理方式").selectOption("volume");
@@ -296,6 +309,7 @@ test("分卷整理选择下层摘要，历史来源可下钻，手改保留结�
     summary_target: { level: "volume", title: "第一卷·雾城", timeline: "main" },
   });
   const card = page.getByTestId("memory-item-volume-1");
+  await openMemorySection(page, "记忆浏览");
   await card
     .getByRole("button", { name: "查看下层摘要 第一章", exact: true })
     .click();
