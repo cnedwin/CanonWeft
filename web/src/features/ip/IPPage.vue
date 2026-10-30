@@ -68,6 +68,15 @@ const sections = [
   { id: "versions", label: "版本与分支" },
   { id: "tools", label: "知识与任务" },
 ] as const;
+const activeTool = ref<"knowledge" | "memory" | "generation" | "workflow">(
+  "knowledge",
+);
+const toolSections = [
+  { id: "knowledge", label: "资料检索" },
+  { id: "memory", label: "创作记忆" },
+  { id: "generation", label: "AI候选" },
+  { id: "workflow", label: "流程检查" },
+] as const;
 const candidates = ref<Candidate[]>([]);
 const usableCandidates = computed(() =>
   candidates.value.filter((c) => !c.retention),
@@ -123,12 +132,36 @@ const memoryBlocking = ref(false);
 const characterBlocking = ref(false);
 const imageAttention = ref(0);
 const generationAttention = ref(0);
+const memoryAttention = ref(0);
+const memoryPanel = ref<InstanceType<typeof MemoryPanel> | null>(null);
+const memorySection = ref<HTMLElement | null>(null);
 const generationSection = ref<HTMLElement | null>(null);
 async function showGenerationTasks() {
   activeSection.value = "tools";
+  activeTool.value = "generation";
   await nextTick();
   generationSection.value?.scrollIntoView({ block: "start" });
   generationSection.value?.focus({ preventScroll: true });
+}
+async function showMemoryWorkspace() {
+  activeSection.value = "tools";
+  activeTool.value = "memory";
+  await nextTick();
+  memorySection.value?.scrollIntoView({ block: "start" });
+  memorySection.value?.focus({ preventScroll: true });
+}
+async function showMemoryTasks() {
+  await showMemoryWorkspace();
+  await memoryPanel.value?.focusExtractionTasks();
+}
+async function useKnowledgeContext(value: {
+  id: string;
+  purpose: string;
+  branch: string;
+}) {
+  if (value.branch !== current.value?.id) return;
+  selectedContext.value = value;
+  await showGenerationTasks();
 }
 async function showImageTasks() {
   activeSection.value = "characters";
@@ -317,6 +350,7 @@ async function useChangePlan(value: { id: string; branch: string }) {
   if (current.value?.id === value.branch) {
     selectedChangePlan.value = value;
     activeSection.value = "tools";
+    activeTool.value = "generation";
     return;
   }
   if (leaveBlocked.value) {
@@ -327,6 +361,7 @@ async function useChangePlan(value: { id: string; branch: string }) {
     await loadBranch(value.branch);
     selectedChangePlan.value = value;
     activeSection.value = "tools";
+    activeTool.value = "generation";
   });
 }
 function canOpenNovelResource() {
@@ -777,6 +812,22 @@ onUnmounted(() => {
       <span v-if="generationBlocking || memoryBlocking">
         · 知识与任务中有未完成的输入或操作
       </span>
+    </p>
+    <p v-if="memoryBlocking" class="author-status">
+      创作记忆中有未完成的输入或操作，切换分区不会丢弃它们。
+      <button type="button" class="quiet" @click="showMemoryWorkspace">
+        继续记忆编辑
+      </button>
+    </p>
+    <p v-if="memoryAttention" class="author-status" role="status">
+      已读取的记忆整理任务中有
+      {{
+        memoryAttention
+      }}
+      项结果或用量仍未知。请查看任务与账单核对状态，不自动重发或释放占用。
+      <button type="button" class="quiet" @click="showMemoryTasks">
+        查看记忆整理任务
+      </button>
     </p>
     <p v-if="generationAttention" class="author-status" role="status">
       已读取的 AI 任务中有
@@ -1344,27 +1395,55 @@ onUnmounted(() => {
         />
       </div>
       <div v-show="activeSection === 'tools'" class="author-work-area">
-        <MemoryPanel
-          :key="current.id + '-memory-' + actor.id"
-          :project="project"
-          :actor="actor"
-          :branch="current"
-          :blocked="busy || savingDraft || bundleBlocking"
-          :publication-revision="publicationRevision"
-          @blocking="memoryBlocking = $event"
-          @expired="emit('expired')"
-        />
-        <KnowledgePanel
-          :key="current.id + '-knowledge'"
-          :project="project"
-          :actor="actor"
-          :branch="current"
-          :blocked="busy || savingDraft || bundleBlocking"
-          :publication-revision="publicationRevision"
-          @use="selectedContext = $event"
-          @expired="emit('expired')"
-        />
-        <section ref="generationSection" tabindex="-1" aria-label="AI 任务">
+        <nav class="author-page-nav" aria-label="知识与任务分区">
+          <button
+            v-for="tool in toolSections"
+            :key="tool.id"
+            type="button"
+            class="quiet"
+            :aria-pressed="activeTool === tool.id"
+            @click="activeTool = tool.id"
+          >
+            {{ tool.label }}
+          </button>
+        </nav>
+        <section
+          v-show="activeTool === 'memory'"
+          ref="memorySection"
+          tabindex="-1"
+          aria-label="创作记忆工作区"
+        >
+          <MemoryPanel
+            ref="memoryPanel"
+            :key="current.id + '-memory-' + actor.id"
+            :project="project"
+            :actor="actor"
+            :branch="current"
+            :blocked="busy || savingDraft || bundleBlocking"
+            :publication-revision="publicationRevision"
+            @blocking="memoryBlocking = $event"
+            @attention="memoryAttention = $event"
+            @expired="emit('expired')"
+          />
+        </section>
+        <div v-show="activeTool === 'knowledge'">
+          <KnowledgePanel
+            :key="current.id + '-knowledge'"
+            :project="project"
+            :actor="actor"
+            :branch="current"
+            :blocked="busy || savingDraft || bundleBlocking"
+            :publication-revision="publicationRevision"
+            @use="useKnowledgeContext"
+            @expired="emit('expired')"
+          />
+        </div>
+        <section
+          v-show="activeTool === 'generation'"
+          ref="generationSection"
+          tabindex="-1"
+          aria-label="AI 任务"
+        >
           <GenerationPanel
             @attention="generationAttention = $event"
             :key="current.id + '-generation'"
@@ -1384,15 +1463,17 @@ onUnmounted(() => {
             @prepared="bundlePanel?.refreshAfterPrepared()"
           />
         </section>
-        <TaskPanel
-          :key="current.id + '-tasks'"
-          :project="project"
-          :actor="actor"
-          :branch="current"
-          :candidates="usableCandidates"
-          :blocked="busy || savingDraft"
-          @expired="emit('expired')"
-        />
+        <div v-show="activeTool === 'workflow'">
+          <TaskPanel
+            :key="current.id + '-tasks'"
+            :project="project"
+            :actor="actor"
+            :branch="current"
+            :candidates="usableCandidates"
+            :blocked="busy || savingDraft"
+            @expired="emit('expired')"
+          />
+        </div>
       </div>
       <section
         v-show="activeSection === 'versions'"

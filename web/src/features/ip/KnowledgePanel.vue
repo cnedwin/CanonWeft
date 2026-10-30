@@ -77,6 +77,7 @@ const root = `/projects/${props.project.id}/branches/${props.branch.id}/knowledg
 const busy = ref(false);
 const error = ref("");
 const notice = ref("");
+const activeView = ref<"search" | "index">("search");
 const query = ref("");
 const purpose = ref("author");
 const perspective = ref("");
@@ -262,45 +263,121 @@ async function privateSource(item: Evidence) {
 </script>
 
 <template>
-  <section class="panel knowledge-panel">
-    <p class="eyebrow">知识与证据</p>
-    <h2>从资料中查找线索</h2>
-    <p class="muted">
+  <section class="panel knowledge-panel author-subpage" aria-label="知识检索">
+    <header class="section-heading">
+      <div>
+        <p class="eyebrow">知识与证据</p>
+        <h2>从资料中查找线索</h2>
+      </div>
+      <span class="pill">{{ resources.length }} 份可选资料</span>
+    </header>
+    <p class="author-page-description">
       结合中文关键词和本地语义模型查找原文。设定约束独立保留，检索不会把参考资料自动改成正史。
     </p>
-    <IndexJobsPanel
-      :project="project"
-      :actor="actor"
-      :branch="branch"
-      :blocked="busy || blocked"
-      :revision="publicationRevision"
-      @queued="indexQueued"
-      @ready="indexReady"
-      @expired="emit('expired')"
-    />
-    <p v-if="notice" role="status">{{ notice }}</p>
-    <form @submit.prevent="search">
-      <label
-        >要查找的线索<input
-          v-model="query"
-          required
-          maxlength="1000"
-          placeholder="例如：与主角寻找失落兵器有关的记录"
-      /></label>
-      <div class="form-row">
+    <nav class="author-page-nav" aria-label="知识检索分区">
+      <button
+        type="button"
+        class="quiet"
+        :aria-pressed="activeView === 'search'"
+        @click="activeView = 'search'"
+      >
+        检索资料
+      </button>
+      <button
+        type="button"
+        class="quiet"
+        :aria-pressed="activeView === 'index'"
+        @click="activeView = 'index'"
+      >
+        索引任务
+      </button>
+    </nav>
+    <p v-if="notice" role="status" class="author-status">{{ notice }}</p>
+    <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <div v-show="activeView === 'index'">
+      <p class="muted">
+        先按当前版本准备检索索引，再返回检索。后台处理不采用或发布资料。
+      </p>
+      <IndexJobsPanel
+        :project="project"
+        :actor="actor"
+        :branch="branch"
+        :blocked="busy || blocked"
+        :revision="publicationRevision"
+        @queued="indexQueued"
+        @ready="indexReady"
+        @expired="emit('expired')"
+      />
+    </div>
+    <div v-show="activeView === 'search'">
+      <p class="muted">
+        输入线索 → 核对用途与来源范围 → 查找证据 → 回查原文或用于AI候选任务。
+      </p>
+      <form @submit.prevent="search">
         <label
-          >上下文用途<select v-model="purpose">
-            <option value="author">作者规划</option>
-            <option value="critic">连续性审查</option>
-            <option value="writer">正文表述与隐藏约束</option>
-            <option value="npc">角色已知信息</option>
-            <option value="research">外部方法研究</option>
-          </select></label
-        >
-        <template v-if="purpose === 'writer' || purpose === 'npc'">
+          >要查找的线索<input
+            v-model="query"
+            required
+            maxlength="1000"
+            placeholder="例如：与主角寻找失落兵器有关的记录"
+        /></label>
+        <div class="form-row">
           <label
-            >角色视角<select v-model="perspective" required>
-              <option value="" disabled>选择角色</option>
+            >上下文用途<select v-model="purpose" aria-label="上下文用途">
+              <option value="author">作者规划</option>
+              <option value="critic">连续性审查</option>
+              <option value="writer">正文表述与隐藏约束</option>
+              <option value="npc">角色已知信息</option>
+              <option value="research">外部方法研究</option>
+            </select></label
+          >
+          <template v-if="purpose === 'writer' || purpose === 'npc'">
+            <label
+              >角色视角<select
+                v-model="perspective"
+                aria-label="角色视角"
+                required
+              >
+                <option value="" disabled>选择角色</option>
+                <option
+                  v-for="entity in branch.snapshot.entities"
+                  :key="entity.id"
+                  :value="entity.id"
+                >
+                  {{ entity.name }}
+                </option>
+              </select></label
+            >
+            <label
+              >故事时间<input v-model.number="storyTime" type="number" required
+            /></label>
+          </template>
+        </div>
+        <div v-if="!['npc', 'writer'].includes(purpose)">
+          <label
+            ><input
+              v-model="includeWorking"
+              type="checkbox"
+            />明确纳入项目工作资料</label
+          >
+          <label
+            ><input
+              v-model="includeMethods"
+              type="checkbox"
+            />明确纳入专业方法参考</label
+          >
+        </div>
+        <details>
+          <summary>指定本次涉及的设定</summary>
+          <p>
+            作者与写作用途始终保留锁定设定和世界规则；角色用途只返回已知事实。可指定必须带入的人物和命题，其余背景按相关性与容量选取，不会修改设定库。
+          </p>
+          <label
+            >本次必须带入的人物与实体<select
+              v-model="focusEntityIDs"
+              multiple
+              :disabled="busy || blocked"
+            >
               <option
                 v-for="entity in branch.snapshot.entities"
                 :key="entity.id"
@@ -311,324 +388,299 @@ async function privateSource(item: Evidence) {
             </select></label
           >
           <label
-            >故事时间<input v-model.number="storyTime" type="number" required
-          /></label>
-        </template>
-      </div>
-      <div v-if="!['npc', 'writer'].includes(purpose)">
-        <label
-          ><input
-            v-model="includeWorking"
-            type="checkbox"
-          />明确纳入项目工作资料</label
-        >
-        <label
-          ><input
-            v-model="includeMethods"
-            type="checkbox"
-          />明确纳入专业方法参考</label
-        >
-      </div>
-      <details>
-        <summary>指定本次涉及的设定</summary>
-        <p>
-          作者与写作用途始终保留锁定设定和世界规则；角色用途只返回已知事实。可指定必须带入的人物和命题，其余背景按相关性与容量选取，不会修改设定库。
-        </p>
-        <label
-          >本次必须带入的人物与实体<select
-            v-model="focusEntityIDs"
-            multiple
-            :disabled="busy || blocked"
-          >
-            <option
-              v-for="entity in branch.snapshot.entities"
-              :key="entity.id"
-              :value="entity.id"
+            >本次必须带入的命题<select
+              v-model="requiredAssertionIDs"
+              multiple
+              :disabled="busy || blocked"
             >
-              {{ entity.name }}
-            </option>
-          </select></label
-        >
-        <label
-          >本次必须带入的命题<select
-            v-model="requiredAssertionIDs"
-            multiple
-            :disabled="busy || blocked"
+              <option
+                v-for="assertion in branch.snapshot.assertions"
+                :key="assertion.id"
+                :value="assertion.id"
+              >
+                {{
+                  branch.snapshot.entities.find(
+                    (e) => e.id === assertion.subject,
+                  )?.name ?? assertion.subject
+                }}
+                · {{ assertion.predicate }}：{{ assertion.value.slice(0, 80) }}
+              </option>
+            </select></label
           >
-            <option
-              v-for="assertion in branch.snapshot.assertions"
-              :key="assertion.id"
-              :value="assertion.id"
-            >
-              {{
-                branch.snapshot.entities.find((e) => e.id === assertion.subject)
-                  ?.name ?? assertion.subject
-              }}
-              · {{ assertion.predicate }}：{{ assertion.value.slice(0, 80) }}
-            </option>
-          </select></label
-        >
-        <p>
-          角色用途仍须满足知情范围；指定命题不会解锁秘密。必需内容超出容量时，会提示调整任务。
-        </p>
-      </details>
-      <WorkingInputsPicker
-        v-if="includeWorking"
-        :project="project.id"
-        :branch="branch.id"
-        :blocked="busy || blocked"
-        :revision="publicationRevision"
-        @change="workingRefs = $event"
-        @expired="emit('expired')"
-      />
-      <label v-if="includeWorking"
-        ><input
-          v-model="includePrivateWorking"
-          type="checkbox"
-        />在我的草稿与可访问候选中进行语义检索</label
-      >
-      <PrivateWorkingIndex
-        v-if="includePrivateWorking"
-        :project="project"
-        :actor="actor"
-        :branch="branch"
-        :blocked="busy || blocked"
-        :revision="publicationRevision"
-        @queued="indexQueued"
-        @expired="emit('expired')"
-      />
-      <fieldset v-if="resources.length" class="required-selection">
-        <legend>本次必须参考的完整资料</legend>
-        <p class="muted">
-          可选，最多 16
-          份。系统会沿已记录的依赖读取精确版本；资料及其依赖不会被相似度排名或容量压缩丢弃。容量不足、引用过期或用途不允许时，需要调整后再生成。
-        </p>
-        <label v-for="item in resources" :key="item.id">
-          <input
-            v-model="requiredIDs"
-            type="checkbox"
-            :value="item.id"
-            :disabled="
-              busy ||
-              blocked ||
-              (requiredIDs.length >= 16 && !requiredIDs.includes(item.id))
-            "
-          />
-          必须参考：{{ item.name }}
-        </label>
-      </fieldset>
-      <label
-        >上下文容量（保守估算）<input
-          v-model.number="tokenBudget"
-          type="number"
-          min="4096"
-          max="262144"
-          required
-      /></label>
-      <button :disabled="busy || blocked">查找并保存证据包</button>
-    </form>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <div v-if="result" class="knowledge-result">
-      <p>
-        本包容量估算 {{ result.estimated_tokens }} /
-        {{ result.token_budget }}；必要设定不会被静默截断。
-      </p>
-      <p v-if="result.structured_selection" data-testid="structured-coverage">
-        本次取用
-        {{ result.structured_selection.selected_assertions }} 条命题、{{
-          result.structured_selection.selected_entities
-        }}
-        个实体； 其中
-        {{ result.structured_selection.required_assertions }} 条命题与
-        {{ result.structured_selection.required_entities }} 个实体属于必需内容。
-        本次未纳入
-        {{ result.structured_selection.omitted_assertions }} 条命题、{{
-          result.structured_selection.omitted_entities
-        }}
-        个实体，不代表这些内容不存在。
-      </p>
-      <button
-        v-if="canEdit && result.input.purpose !== 'npc'"
-        class="secondary"
-        :disabled="busy || blocked"
-        @click="
-          emit('use', {
-            id: result.id,
-            purpose: result.input.purpose,
-            branch: branch.id,
-          })
-        "
-      >
-        用于下方 AI 候选任务
-      </button>
-      <h3>本次设定 · {{ result.facts.length }} 条</h3>
-      <p v-for="fact in result.facts" :key="fact.id">
-        {{ fact.subject }} · {{ fact.predicate }}：{{ fact.value }}
-        <small>（{{ fact.kind }}）</small>
-      </p>
-      <details v-if="result.hidden_constraints.length">
-        <summary>
-          作者隐藏约束 ·
-          {{ result.hidden_constraints.length }} 条（不可直接进入角色对白）
-        </summary>
-        <p v-for="fact in result.hidden_constraints" :key="fact.id">
-          {{ fact.predicate }}：{{ fact.value }}
-        </p>
-      </details>
-      <section
-        v-if="result.required_inputs?.length"
-        data-testid="required-context"
-      >
-        <h3>必须参考的完整输入 · {{ result.required_inputs.length }} 项</h3>
-        <p class="muted">
-          历史版本与其他分支的内容保留出处，不会成为当前故事的正式事实；方法只供参考，不会执行文件中的代码。
-        </p>
-        <details
-          v-for="(item, index) in result.required_inputs"
-          :key="index"
-          class="required-card"
-        >
-          <summary>
-            {{ item.name }} · {{ requiredSpaceNames[item.space] }}
-          </summary>
           <p>
-            {{ item.dependency.reason }} ·
-            {{ item.dependency.pinned ? "固定历史版本" : "引用版本仍须有效" }}
-          </p>
-          <p v-if="item.hidden" class="muted">
-            作者隐藏约束，不可直接进入角色表述。
-          </p>
-          <p class="evidence-text">
-            {{ requiredText(item.dependency.source.kind, item.text) }}
+            角色用途仍须满足知情范围；指定命题不会解锁秘密。必需内容超出容量时，会提示调整任务。
           </p>
         </details>
-      </section>
-      <h3>原文证据 · {{ result.evidence.length }} 段</h3>
-      <section v-if="result.private_hits?.length" data-testid="private-hits">
-        <h3>未确认的语义线索 · {{ result.private_hits.length }} 段</h3>
-        <p class="muted">
-          私人草稿和候选片段，只供完善或审查；不代表正式事实。所选完整输入在下方独立保留。
+        <WorkingInputsPicker
+          v-if="includeWorking"
+          :project="project.id"
+          :branch="branch.id"
+          :blocked="busy || blocked"
+          :revision="publicationRevision"
+          @change="workingRefs = $event"
+          @expired="emit('expired')"
+        />
+        <label v-if="includeWorking"
+          ><input
+            v-model="includePrivateWorking"
+            type="checkbox"
+          />在我的草稿与可访问候选中进行语义检索</label
+        >
+        <PrivateWorkingIndex
+          v-if="includePrivateWorking"
+          :project="project"
+          :actor="actor"
+          :branch="branch"
+          :blocked="busy || blocked"
+          :revision="publicationRevision"
+          @queued="indexQueued"
+          @expired="emit('expired')"
+        />
+        <details v-if="resources.length" class="required-resources">
+          <summary>
+            指定必须参考的完整资料 · 已选 {{ requiredIDs.length }} 份
+          </summary>
+          <fieldset class="required-selection">
+            <legend>本次必须参考的完整资料</legend>
+            <p class="muted">
+              可选，最多 16
+              份。系统会沿已记录的依赖读取精确版本；资料及其依赖不会被相似度排名或容量压缩丢弃。容量不足、引用过期或用途不允许时，需要调整后再生成。
+            </p>
+            <label v-for="item in resources" :key="item.id">
+              <input
+                v-model="requiredIDs"
+                type="checkbox"
+                :value="item.id"
+                :disabled="
+                  busy ||
+                  blocked ||
+                  (requiredIDs.length >= 16 && !requiredIDs.includes(item.id))
+                "
+              />
+              必须参考：{{ item.name }}
+            </label>
+          </fieldset>
+        </details>
+        <label
+          >上下文容量（保守估算）<input
+            v-model.number="tokenBudget"
+            type="number"
+            min="4096"
+            max="262144"
+            required
+        /></label>
+        <button :disabled="busy || blocked">查找并保存证据包</button>
+      </form>
+      <div v-if="result" class="knowledge-result">
+        <p>
+          本包容量估算 {{ result.estimated_tokens }} /
+          {{ result.token_budget }}；必要设定不会被静默截断。
         </p>
+        <p v-if="result.structured_selection" data-testid="structured-coverage">
+          本次取用
+          {{ result.structured_selection.selected_assertions }} 条命题、{{
+            result.structured_selection.selected_entities
+          }}
+          个实体； 其中
+          {{ result.structured_selection.required_assertions }} 条命题与
+          {{
+            result.structured_selection.required_entities
+          }}
+          个实体属于必需内容。 本次未纳入
+          {{ result.structured_selection.omitted_assertions }} 条命题、{{
+            result.structured_selection.omitted_entities
+          }}
+          个实体，不代表这些内容不存在。
+        </p>
+        <button
+          v-if="canEdit && result.input.purpose !== 'npc'"
+          class="secondary"
+          :disabled="busy || blocked"
+          @click="
+            emit('use', {
+              id: result.id,
+              purpose: result.input.purpose,
+              branch: branch.id,
+            })
+          "
+        >
+          用于 AI 候选任务
+        </button>
+        <details>
+          <summary>本次设定 · {{ result.facts.length }} 条</summary>
+          <p v-for="fact in result.facts" :key="fact.id">
+            {{ fact.subject }} · {{ fact.predicate }}：{{ fact.value }}
+            <small>（{{ fact.kind }}）</small>
+          </p>
+        </details>
+        <details v-if="result.hidden_constraints.length">
+          <summary>
+            作者隐藏约束 ·
+            {{ result.hidden_constraints.length }} 条（不可直接进入角色对白）
+          </summary>
+          <p v-for="fact in result.hidden_constraints" :key="fact.id">
+            {{ fact.predicate }}：{{ fact.value }}
+          </p>
+        </details>
+        <section
+          v-if="result.required_inputs?.length"
+          data-testid="required-context"
+        >
+          <h3>必须参考的完整输入 · {{ result.required_inputs.length }} 项</h3>
+          <p class="muted">
+            历史版本与其他分支的内容保留出处，不会成为当前故事的正式事实；方法只供参考，不会执行文件中的代码。
+          </p>
+          <details
+            v-for="(item, index) in result.required_inputs"
+            :key="index"
+            class="required-card"
+          >
+            <summary>
+              {{ item.name }} · {{ requiredSpaceNames[item.space] }}
+            </summary>
+            <p>
+              {{ item.dependency.reason }} ·
+              {{ item.dependency.pinned ? "固定历史版本" : "引用版本仍须有效" }}
+            </p>
+            <p v-if="item.hidden" class="muted">
+              作者隐藏约束，不可直接进入角色表述。
+            </p>
+            <p class="evidence-text">
+              {{ requiredText(item.dependency.source.kind, item.text) }}
+            </p>
+          </details>
+        </section>
+        <h3>原文证据 · {{ result.evidence.length }} 段</h3>
+        <section v-if="result.private_hits?.length" data-testid="private-hits">
+          <h3>未确认的语义线索 · {{ result.private_hits.length }} 段</h3>
+          <p class="muted">
+            私人草稿和候选片段，只供完善或审查；不代表正式事实。所选完整输入在下方独立保留。
+          </p>
+          <article
+            v-for="item in result.private_hits"
+            :key="item.id"
+            class="evidence-card"
+          >
+            <strong
+              >{{ item.name }} ·
+              {{
+                item.state === "PRIVATE_DRAFT"
+                  ? "私人草稿"
+                  : item.state === "READY"
+                    ? "已采用未发布"
+                    : "待确认候选"
+              }}</strong
+            >
+            <p class="evidence-text">{{ item.text }}</p>
+            <small
+              >原文字符 {{ item.start + 1 }}—{{ item.end }} · 语义相关度
+              {{ item.semantic_score.toFixed(3) }} · 来源版本
+              {{ item.ref.version }}</small
+            >
+            <button
+              class="quiet"
+              :disabled="busy || blocked"
+              @click="privateSource(item)"
+            >
+              核对未确认原文
+            </button>
+          </article>
+        </section>
+        <section
+          v-if="result.unconfirmed_inputs?.length"
+          data-testid="unconfirmed-context"
+        >
+          <h3>未确认资料 · {{ result.unconfirmed_inputs.length }} 项</h3>
+          <p class="muted">
+            以下是用于协作完善的草稿或候选，不是正式设定、已发生事件或获准执行的方法。保存此证据包不会采用或发布任何内容。
+          </p>
+          <details
+            v-for="(item, index) in result.unconfirmed_inputs"
+            :key="index"
+          >
+            <summary>
+              {{ item.parts[0]?.name }} ·
+              {{
+                item.state === "PRIVATE_DRAFT"
+                  ? "私人草稿"
+                  : item.state === "READY"
+                    ? "已采用但未发布"
+                    : "待确认候选"
+              }}
+            </summary>
+            <article v-for="(part, partIndex) in item.parts" :key="partIndex">
+              <h4>{{ part.name }}</h4>
+              <p class="evidence-text">
+                {{
+                  requiredText(
+                    part.format === "text" ? "resource" : "structured",
+                    part.text,
+                  )
+                }}
+              </p>
+            </article>
+          </details>
+        </section>
         <article
-          v-for="item in result.private_hits"
+          v-for="item in result.evidence"
           :key="item.id"
           class="evidence-card"
         >
-          <strong
-            >{{ item.name }} ·
-            {{
-              item.state === "PRIVATE_DRAFT"
-                ? "私人草稿"
-                : item.state === "READY"
-                  ? "已采用未发布"
-                  : "待确认候选"
-            }}</strong
-          >
+          <strong>{{ item.name }}</strong>
           <p class="evidence-text">{{ item.text }}</p>
           <small
             >原文字符 {{ item.start + 1 }}—{{ item.end }} · 语义相关度
-            {{ item.semantic_score.toFixed(3) }} · 来源版本
-            {{ item.ref.version }}</small
+            {{ item.semantic_score.toFixed(3) }}</small
           >
           <button
             class="quiet"
             :disabled="busy || blocked"
-            @click="privateSource(item)"
+            @click="source(item)"
           >
-            核对未确认原文
+            核对完整原文
           </button>
         </article>
-      </section>
-      <section
-        v-if="result.unconfirmed_inputs?.length"
-        data-testid="unconfirmed-context"
-      >
-        <h3>未确认资料 · {{ result.unconfirmed_inputs.length }} 项</h3>
-        <p class="muted">
-          以下是用于协作完善的草稿或候选，不是正式设定、已发生事件或获准执行的方法。保存此证据包不会采用或发布任何内容。
+        <p v-for="omission in result.omissions" :key="omission" class="muted">
+          {{ omission }}
         </p>
-        <details
-          v-for="(item, index) in result.unconfirmed_inputs"
-          :key="index"
-        >
-          <summary>
-            {{ item.parts[0]?.name }} ·
-            {{
-              item.state === "PRIVATE_DRAFT"
-                ? "私人草稿"
-                : item.state === "READY"
-                  ? "已采用但未发布"
-                  : "待确认候选"
-            }}
-          </summary>
-          <article v-for="(part, partIndex) in item.parts" :key="partIndex">
-            <h4>{{ part.name }}</h4>
-            <p class="evidence-text">
-              {{
-                requiredText(
-                  part.format === "text" ? "resource" : "structured",
-                  part.text,
-                )
-              }}
-            </p>
-          </article>
-        </details>
-      </section>
-      <article
-        v-for="item in result.evidence"
-        :key="item.id"
-        class="evidence-card"
-      >
-        <strong>{{ item.name }}</strong>
-        <p class="evidence-text">{{ item.text }}</p>
-        <small
-          >原文字符 {{ item.start + 1 }}—{{ item.end }} · 语义相关度
-          {{ item.semantic_score.toFixed(3) }}</small
-        >
-        <button class="quiet" :disabled="busy || blocked" @click="source(item)">
-          核对完整原文
-        </button>
-      </article>
-      <p v-for="omission in result.omissions" :key="omission" class="muted">
-        {{ omission }}
-      </p>
-      <template v-for="group in referenceGroups" :key="group.name">
-        <section v-if="group.items.length">
-          <h3>{{ group.name }}</h3>
-          <article
-            v-for="item in group.items"
-            :key="item.id"
-            class="evidence-card"
-          >
-            <strong>{{ item.name }}</strong>
-            <p class="evidence-text">{{ item.text }}</p>
-            <button
-              class="quiet"
-              :disabled="busy || blocked"
-              @click="source(item)"
+        <template v-for="group in referenceGroups" :key="group.name">
+          <section v-if="group.items.length">
+            <h3>{{ group.name }}</h3>
+            <article
+              v-for="item in group.items"
+              :key="item.id"
+              class="evidence-card"
             >
-              核对完整原文
-            </button>
-          </article>
-        </section>
-      </template>
-      <details>
-        <summary>证据包版本记录</summary>
-        <p>证据包：{{ result.id }}</p>
-        <p v-if="result.expanded_query">
-          别名扩展检索：{{ result.expanded_query }}
-        </p>
-        <p>索引：{{ result.index_id }}</p>
-        <p v-if="result.private_index_id">
-          私人索引：{{ result.private_index_id }}
-        </p>
-        <p>设定版本：{{ result.ip_head || "尚无发布设定" }}</p>
+              <strong>{{ item.name }}</strong>
+              <p class="evidence-text">{{ item.text }}</p>
+              <button
+                class="quiet"
+                :disabled="busy || blocked"
+                @click="source(item)"
+              >
+                核对完整原文
+              </button>
+            </article>
+          </section>
+        </template>
+        <details>
+          <summary>证据包版本记录</summary>
+          <p>证据包：{{ result.id }}</p>
+          <p v-if="result.expanded_query">
+            别名扩展检索：{{ result.expanded_query }}
+          </p>
+          <p>索引：{{ result.index_id }}</p>
+          <p v-if="result.private_index_id">
+            私人索引：{{ result.private_index_id }}
+          </p>
+          <p>设定版本：{{ result.ip_head || "尚无发布设定" }}</p>
+        </details>
+      </div>
+      <details v-if="excerpt" open>
+        <summary>经核对的完整原文</summary>
+        <p class="evidence-text">{{ excerpt }}</p>
       </details>
     </div>
-    <details v-if="excerpt" open>
-      <summary>经核对的完整原文</summary>
-      <p class="evidence-text">{{ excerpt }}</p>
-    </details>
   </section>
 </template>
 

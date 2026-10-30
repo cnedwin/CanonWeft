@@ -104,6 +104,37 @@ const canRevoke = computed(
 const capabilityBlocking = ref(false);
 const qualificationBlocking = ref(false);
 const discoveryBlocking = ref(false);
+type TaskAttention = { unknown: number; review: number; active: number };
+const section = ref("capabilities");
+const packageQuery = ref("");
+const packageState = ref("");
+const taskAttention = ref<Record<string, TaskAttention>>({});
+const sections = [
+  { id: "capabilities", name: "能力与工作流" },
+  { id: "packages", name: "方法包与版本" },
+  { id: "discovery", name: "来源发现" },
+  { id: "qualification", name: "独立评测与绑定" },
+];
+const taskAlerts = computed(() =>
+  sections.filter((item) => {
+    const value = taskAttention.value[item.id];
+    return value && (value.unknown || value.review || value.active);
+  }),
+);
+const filteredPackages = computed(() => {
+  const query = packageQuery.value.trim().toLocaleLowerCase();
+  return items.value.filter(
+    (item) =>
+      (!packageState.value || item.state === packageState.value) &&
+      (!query ||
+        [
+          item.report.name,
+          item.report.description,
+          item.id,
+          item.source.repository ?? "",
+        ].some((value) => value.toLocaleLowerCase().includes(query))),
+  );
+});
 const dirty = computed(
   () =>
     capabilityBlocking.value ||
@@ -190,6 +221,7 @@ async function loadVersion(version: Version) {
   file.value = content;
   text.value = content.text;
   mode.value = "browse";
+  section.value = "packages";
   conflicts.value = null;
   choices.value = {};
   reason.value = "";
@@ -222,6 +254,7 @@ async function openFile(path: string) {
 }
 function newMethod() {
   if (mayLeave()) {
+    section.value = "packages";
     mode.value = "create";
     markdown.value = "";
     file.value = null;
@@ -389,311 +422,394 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <main class="skills-page">
-    <section class="intro">
+  <main class="skills-page author-subpage">
+    <header class="author-page-header">
       <div>
         <p class="eyebrow">{{ project.name }} / 方法与能力</p>
         <h1>Skill 研究与编辑</h1>
-        <p class="muted">
-          完整保留来源包、人工修改和上游变化。当前开放静态分析与方法参考管理。
-        </p>
       </div>
       <button class="quiet" :disabled="busy" @click="close">
         返回项目书架
       </button>
-    </section>
+    </header>
+    <p class="author-page-description">
+      先选择能力或完整方法包，编辑后保留为新版本，再按任务核对试用、独立评测与用途绑定。来源原件、旧版本与历史记录持续保留。
+    </p>
+    <nav class="author-page-nav" aria-label="方法与能力分区">
+      <button
+        v-for="item in sections"
+        :key="item.id"
+        class="quiet"
+        :aria-pressed="section === item.id"
+        :disabled="busy"
+        @click="section = item.id"
+      >
+        {{ item.name }}
+      </button>
+    </nav>
+    <aside v-if="dirty" class="skills-draft-notice">
+      有未保存输入或操作正在进行。切换分区会保留本页内容；返回前请在相应分区保存为新版本或放弃编辑。
+    </aside>
+    <aside
+      v-if="taskAlerts.length"
+      class="skills-task-notice"
+      aria-label="已读取的能力任务状态"
+    >
+      <strong>已读取记录中的待处理任务</strong>
+      <div v-for="item in taskAlerts" :key="item.id">
+        <span
+          >{{ item.name }}：结果未知 {{ taskAttention[item.id]?.unknown }} 项 ·
+          等待维护或交接确认 {{ taskAttention[item.id]?.review }} 项 · 进行中
+          {{ taskAttention[item.id]?.active }} 项</span
+        >
+        <button class="quiet" :disabled="busy" @click="section = item.id">
+          查看{{ item.name }}
+        </button>
+      </div>
+      <p>
+        仅反映已读取的任务；未读取记录不在统计内。结果未知请先核对回执与费用，任务记录不会因切换分区而重新执行。
+      </p>
+    </aside>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <DiscoveryPanel
+      v-show="section === 'discovery'"
       :actor="actor"
       :project="project"
       @expired="emit('expired')"
       @blocking="discoveryBlocking = $event"
       @open="openDiscovered"
+      @attention="taskAttention.discovery = $event"
     />
     <CapabilitiesPanel
+      v-show="section === 'capabilities'"
       :actor="actor"
       :project="project"
       @expired="emit('expired')"
       @blocking="capabilityBlocking = $event"
       @installed="perform(refresh)"
+      @attention="taskAttention.capabilities = $event"
     />
     <QualificationPanel
+      v-show="section === 'qualification'"
       :key="project.id"
       :actor="actor"
       :project="project"
       @expired="emit('expired')"
       @blocking="qualificationBlocking = $event"
+      @attention="taskAttention.qualification = $event"
     />
-    <section class="panel" v-if="canEdit">
-      <details>
-        <summary>随系统提供的完整方法包</summary>
-        <article v-for="preset in presets" :key="preset.name">
-          <h3>{{ preset.report.name }}</h3>
-          <p>{{ preset.report.description }}</p>
-          <p>
-            包含
-            {{ preset.report.files.length }}
-            个文件；各模型成品资格单独验证。
-          </p>
-          <p v-if="preset.source.kind === 'github'">
-            外部来源：{{ preset.source.repository }} · 版本
-            {{
-              preset.source.commit?.slice(0, 12)
-            }}。保留完整原件、许可和脚本；脚本尚未获准运行。
-          </p>
-          <p v-else>本系统方法，包含输入输出契约和例子。</p>
-          <p v-if="preset.issue" role="alert">{{ preset.issue }}</p>
-          <button
-            :disabled="busy || dirty || !!preset.issue"
-            @click="copyPreset(preset.name)"
-          >
-            复制到本项目后编辑
-          </button>
-        </article>
-      </details>
-      <h2>新增方法</h2>
-      <div class="actions">
-        <button :disabled="busy || dirty" @click="newMethod">
-          手工编写 Skill</button
-        ><label
-          >导入完整技能 ZIP<input
-            type="file"
-            accept=".zip"
-            :disabled="busy || dirty"
-            @change="upload"
-        /></label>
-      </div>
-      <details>
-        <summary>从公开 GitHub 来源抓取并分析</summary>
-        <p class="muted">
-          读取完整技能目录及仓库许可，固定提交与文件哈希。不会使用账户凭据，也不会执行下载内容。
-        </p>
-        <form @submit.prevent="fetchSource">
-          <fieldset :disabled="busy || dirty">
-            <label
-              >公开仓库（owner/repo）<input v-model="repo" required /></label
-            ><label>分支、标签或提交<input v-model="revision" required /></label
-            ><label
-              >技能所在目录<input
-                v-model="directory"
-                placeholder="例如 skills/skill-creator" /></label
-            ><button>抓取并分析技能包</button>
-          </fieldset>
-        </form>
-      </details>
-      <form v-if="mode === 'create'" @submit.prevent="create">
-        <label
-          >新方法 SKILL.md<textarea
-            v-model="markdown"
-            rows="14"
-            required
-            placeholder="包含 name、description 的 YAML 头部，以及方法步骤、例子和边界。"
-          /></label
-        ><button :disabled="busy">保存方法候选</button
-        ><button type="button" class="quiet" :disabled="busy" @click="discard">
-          放弃当前编辑
-        </button>
-      </form>
-    </section>
-    <div class="skill-layout">
-      <aside class="panel">
-        <h2>版本库</h2>
-        <p v-if="!items.length" class="muted">
-          尚无项目方法。导入完整技能包或编写自己的方法，分析结果会随版本保存。
-        </p>
-        <button
-          v-for="item in items"
-          :key="item.id"
-          class="version-card"
-          :disabled="busy || !!item.retention"
-          @click="open(item)"
-        >
-          <strong
-            >{{ item.retention ? "已过期的方法" : item.report.name }} ·
-            {{ item.id.slice(0, 8) }}</strong
-          ><small
-            >{{ stateNames[item.state] }} ·
-            {{
-              item.retention
-                ? "原材料已清理，可重新导入或创建"
-                : item.available
-                  ? "来源链未撤销"
-                  : "来源链已受限"
-            }}</small
-          >
-        </button>
-      </aside>
-      <section class="panel" v-if="selected">
-        <h2>{{ selected.report.name }}</h2>
-        <p>{{ selected.report.description }}</p>
-        <p>
-          {{ stateNames[selected.state] }} ·
-          {{ selected.available ? "来源链未撤销" : "本版本或上游已撤销" }}
-        </p>
-        <p class="muted">
-          本包分析不授予全局资格。具体版本、任务和模型或工具配置的资格，请查看独立评测与用途绑定记录。
-        </p>
-        <p>
-          来源：{{ selected.source.kind }}
-          <a
-            v-if="selected.source.url"
-            :href="selected.source.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            >核对固定来源</a
-          >
-        </p>
-        <p v-if="selected.source.commit">
-          固定提交：{{ selected.source.commit }}
-        </p>
-        <p>
-          许可声明：{{ selected.report.license_claim || "未声明" }} · 许可文件
-          {{ selected.report.license_files.length }} 份
-        </p>
-        <p>
-          上一个版本：{{ selected.parent_id || "原始包" }} · 合并上游：{{
-            selected.upstream_id || "无"
-          }}
-        </p>
-        <ul>
-          <li v-for="finding in selected.report.findings" :key="finding">
-            {{ finding }}
-          </li>
-        </ul>
+    <section v-show="section === 'packages'" aria-label="方法包与版本工作区">
+      <section class="panel" v-if="canEdit">
         <details>
-          <summary>文件与哈希 · {{ selected.report.files.length }} 个</summary>
-          <ul>
-            <li v-for="entry in selected.report.files" :key="entry.path">
-              <button
-                class="quiet"
-                :disabled="busy"
-                @click="openFile(entry.path)"
+          <summary>随系统提供的完整方法包</summary>
+          <article v-for="preset in presets" :key="preset.name">
+            <h3>{{ preset.report.name }}</h3>
+            <p>{{ preset.report.description }}</p>
+            <p>
+              包含
+              {{ preset.report.files.length }}
+              个文件；各模型成品资格单独验证。
+            </p>
+            <p v-if="preset.source.kind === 'github'">
+              外部来源：{{ preset.source.repository }} · 版本
+              {{
+                preset.source.commit?.slice(0, 12)
+              }}。保留完整原件、许可和脚本；脚本尚未获准运行。
+            </p>
+            <p v-else>本系统方法，包含输入输出契约和例子。</p>
+            <p v-if="preset.issue" role="alert">{{ preset.issue }}</p>
+            <button
+              :disabled="busy || dirty || !!preset.issue"
+              @click="copyPreset(preset.name)"
+            >
+              复制到本项目后编辑
+            </button>
+          </article>
+        </details>
+        <h2>新增方法</h2>
+        <div class="actions">
+          <button :disabled="busy || dirty" @click="newMethod">
+            手工编写 Skill</button
+          ><label
+            >导入完整技能 ZIP<input
+              type="file"
+              accept=".zip"
+              :disabled="busy || dirty"
+              @change="upload"
+          /></label>
+        </div>
+        <details>
+          <summary>从公开 GitHub 来源抓取并分析</summary>
+          <p class="muted">
+            读取完整技能目录及仓库许可，固定提交与文件哈希。不会使用账户凭据，也不会执行下载内容。
+          </p>
+          <form @submit.prevent="fetchSource">
+            <fieldset :disabled="busy || dirty">
+              <label
+                >公开仓库（owner/repo）<input v-model="repo" required /></label
+              ><label
+                >分支、标签或提交<input v-model="revision" required /></label
+              ><label
+                >技能所在目录<input
+                  v-model="directory"
+                  placeholder="例如 skills/skill-creator" /></label
+              ><button>抓取并分析技能包</button>
+            </fieldset>
+          </form>
+        </details>
+        <form v-if="mode === 'create'" @submit.prevent="create">
+          <label
+            >新方法 SKILL.md<textarea
+              v-model="markdown"
+              rows="14"
+              required
+              placeholder="包含 name、description 的 YAML 头部，以及方法步骤、例子和边界。"
+            /></label
+          ><button :disabled="busy">保存方法候选</button
+          ><button
+            type="button"
+            class="quiet"
+            :disabled="busy"
+            @click="discard"
+          >
+            放弃当前编辑
+          </button>
+        </form>
+      </section>
+      <div class="skill-layout">
+        <aside class="panel">
+          <h2>版本库</h2>
+          <label
+            >搜索方法包<input
+              v-model="packageQuery"
+              type="search"
+              aria-label="搜索方法包版本"
+              placeholder="名称、来源或版本编号"
+          /></label>
+          <label
+            >版本状态<select
+              v-model="packageState"
+              aria-label="筛选方法包版本状态"
+            >
+              <option value="">全部状态</option>
+              <option
+                v-for="(name, value) in stateNames"
+                :key="value"
+                :value="value"
               >
-                {{ entry.path }}</button
-              ><small>{{ entry.size }} 字节 · {{ entry.hash }}</small>
+                {{ name }}
+              </option>
+            </select></label
+          >
+          <p class="muted">
+            当前显示 {{ filteredPackages.length }} /
+            {{ items.length }} 个已读取版本
+          </p>
+          <p v-if="!items.length" class="muted">
+            尚无项目方法。导入完整技能包或编写自己的方法，分析结果会随版本保存。
+          </p>
+          <button
+            v-for="item in filteredPackages"
+            :key="item.id"
+            class="version-card"
+            :aria-pressed="selected?.id === item.id"
+            :disabled="busy || !!item.retention"
+            @click="open(item)"
+          >
+            <strong
+              >{{ item.retention ? "已过期的方法" : item.report.name }} ·
+              {{ item.id.slice(0, 8) }}</strong
+            ><small
+              >{{ stateNames[item.state] }} ·
+              {{
+                item.retention
+                  ? "原材料已清理，可重新导入或创建"
+                  : item.available
+                    ? "来源链未撤销"
+                    : "来源链已受限"
+              }}</small
+            >
+          </button>
+        </aside>
+        <section class="panel" v-if="selected">
+          <h2>{{ selected.report.name }}</h2>
+          <p>{{ selected.report.description }}</p>
+          <p>
+            {{ stateNames[selected.state] }} ·
+            {{ selected.available ? "来源链未撤销" : "本版本或上游已撤销" }}
+          </p>
+          <p class="muted">
+            本包分析不授予全局资格。具体版本、任务和模型或工具配置的资格，请查看独立评测与用途绑定记录。
+          </p>
+          <p>
+            来源：{{ selected.source.kind }}
+            <a
+              v-if="selected.source.url"
+              :href="selected.source.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              >核对固定来源</a
+            >
+          </p>
+          <p v-if="selected.source.commit">
+            固定提交：{{ selected.source.commit }}
+          </p>
+          <p>
+            许可声明：{{ selected.report.license_claim || "未声明" }} · 许可文件
+            {{ selected.report.license_files.length }} 份
+          </p>
+          <p>
+            上一个版本：{{ selected.parent_id || "原始包" }} · 合并上游：{{
+              selected.upstream_id || "无"
+            }}
+          </p>
+          <ul>
+            <li v-for="finding in selected.report.findings" :key="finding">
+              {{ finding }}
             </li>
           </ul>
-        </details>
-        <div v-if="file">
-          <h3>{{ file.path }}</h3>
-          <p v-if="!file.editable" class="muted">
-            该文件为二进制或超出文本编辑大小，完整原件仍保留在包内。
-          </p>
-          <template v-else
-            ><label
-              >文件内容<textarea
-                v-model="text"
-                rows="18"
-                :readonly="!canEdit || !selected.available"
-                :disabled="busy"
-              />
-            </label>
-            <details v-if="dirty">
-              <summary>本次编辑前的原文</summary>
-              <pre>{{ file.text }}</pre>
-            </details>
-            <div class="actions" v-if="canEdit">
-              <button
-                :disabled="busy || !dirty || !selected.available"
-                @click="save"
-              >
-                保存为新技能版本</button
-              ><button
-                class="quiet"
-                :disabled="busy || !dirty"
-                @click="discard"
-              >
-                放弃当前编辑
-              </button>
-            </div></template
-          >
-        </div>
-        <button
-          v-if="
-            canPublish && selected.available && selected.state === 'CANDIDATE'
-          "
-          :disabled="busy || dirty"
-          @click="reference"
-        >
-          保存为方法参考版本
-        </button>
-        <details v-if="canEdit && selected.available">
-          <summary>三方合并上游更新</summary>
-          <label
-            >共同基础版本<select v-model="baseID" aria-label="共同基础版本">
-              <option value="">选择基础</option>
-              <option
-                v-for="v in items.filter(
-                  (i) => i.report.name === selected?.report.name,
-                )"
-                :key="v.id"
-                :value="v.id"
-              >
-                {{ v.id.slice(0, 8) }} · {{ stateNames[v.state] }}
-              </option>
-            </select></label
-          ><label
-            >上游新版本<select v-model="upstreamID" aria-label="上游新版本">
-              <option value="">选择上游</option>
-              <option
-                v-for="v in items.filter(
-                  (i) => i.report.name === selected?.report.name,
-                )"
-                :key="v.id"
-                :value="v.id"
-              >
-                {{ v.id.slice(0, 8) }} · {{ stateNames[v.state] }}
-              </option>
-            </select></label
-          ><button
-            :disabled="busy || dirty || !baseID || !upstreamID"
-            @click="previewMerge"
-          >
-            检查合并差异
-          </button>
-          <article v-for="conflict in conflicts" :key="conflict.path">
-            <h4>{{ conflict.path }}</h4>
-            <details>
-              <summary>基础 / 上游 / 本地原文</summary>
-              <h5>基础</h5>
-              <pre>{{ decode(conflict.base, conflict.base_exists) }}</pre>
-              <h5>上游</h5>
-              <pre>{{
-                decode(conflict.upstream, conflict.upstream_exists)
-              }}</pre>
-              <h5>本地</h5>
-              <pre>{{ decode(conflict.local, conflict.local_exists) }}</pre>
-            </details>
-            <label
-              >冲突选择<select v-model="choices[conflict.path]">
-                <option value="">请选择</option>
-                <option value="local">保留本地</option>
-                <option value="upstream">采用上游</option>
-                <option value="delete">删除此文件</option>
-              </select></label
+          <details>
+            <summary>
+              文件与哈希 · {{ selected.report.files.length }} 个
+            </summary>
+            <ul>
+              <li v-for="entry in selected.report.files" :key="entry.path">
+                <button
+                  class="quiet"
+                  :disabled="busy"
+                  @click="openFile(entry.path)"
+                >
+                  {{ entry.path }}</button
+                ><small>{{ entry.size }} 字节 · {{ entry.hash }}</small>
+              </li>
+            </ul>
+          </details>
+          <div v-if="file">
+            <h3>{{ file.path }}</h3>
+            <p v-if="!file.editable" class="muted">
+              该文件为二进制或超出文本编辑大小，完整原件仍保留在包内。
+            </p>
+            <template v-else
+              ><label
+                >文件内容<textarea
+                  v-model="text"
+                  rows="18"
+                  :readonly="!canEdit || !selected.available"
+                  :disabled="busy"
+                />
+              </label>
+              <details v-if="dirty">
+                <summary>本次编辑前的原文</summary>
+                <pre>{{ file.text }}</pre>
+              </details>
+              <div class="actions" v-if="canEdit">
+                <button
+                  :disabled="busy || !dirty || !selected.available"
+                  @click="save"
+                >
+                  保存为新技能版本</button
+                ><button
+                  class="quiet"
+                  :disabled="busy || !dirty"
+                  @click="discard"
+                >
+                  放弃当前编辑
+                </button>
+              </div></template
             >
-          </article>
+          </div>
           <button
-            v-if="conflicts !== null"
-            :disabled="busy || dirty || conflicts.some((c) => !choices[c.path])"
-            @click="merge"
+            v-if="
+              canPublish && selected.available && selected.state === 'CANDIDATE'
+            "
+            :disabled="busy || dirty"
+            @click="reference"
           >
-            保存合并候选
+            保存为方法参考版本
           </button>
-        </details>
-        <details v-if="canRevoke && selected.available">
-          <summary>撤销此来源版本</summary>
-          <p>
-            该版本及沿其派生、合并的版本将不能再保存为可用参考；原文与历史保留。
-          </p>
-          <label>撤销原因<input v-model="reason" maxlength="1000" /></label
-          ><button :disabled="busy || dirty || !reason.trim()" @click="revoke">
-            撤销此版本及派生引用
-          </button>
-        </details>
-      </section>
-    </div>
+          <details v-if="canEdit && selected.available">
+            <summary>三方合并上游更新</summary>
+            <label
+              >共同基础版本<select v-model="baseID" aria-label="共同基础版本">
+                <option value="">选择基础</option>
+                <option
+                  v-for="v in items.filter(
+                    (i) => i.report.name === selected?.report.name,
+                  )"
+                  :key="v.id"
+                  :value="v.id"
+                >
+                  {{ v.id.slice(0, 8) }} · {{ stateNames[v.state] }}
+                </option>
+              </select></label
+            ><label
+              >上游新版本<select v-model="upstreamID" aria-label="上游新版本">
+                <option value="">选择上游</option>
+                <option
+                  v-for="v in items.filter(
+                    (i) => i.report.name === selected?.report.name,
+                  )"
+                  :key="v.id"
+                  :value="v.id"
+                >
+                  {{ v.id.slice(0, 8) }} · {{ stateNames[v.state] }}
+                </option>
+              </select></label
+            ><button
+              :disabled="busy || dirty || !baseID || !upstreamID"
+              @click="previewMerge"
+            >
+              检查合并差异
+            </button>
+            <article v-for="conflict in conflicts" :key="conflict.path">
+              <h4>{{ conflict.path }}</h4>
+              <details>
+                <summary>基础 / 上游 / 本地原文</summary>
+                <h5>基础</h5>
+                <pre>{{ decode(conflict.base, conflict.base_exists) }}</pre>
+                <h5>上游</h5>
+                <pre>{{
+                  decode(conflict.upstream, conflict.upstream_exists)
+                }}</pre>
+                <h5>本地</h5>
+                <pre>{{ decode(conflict.local, conflict.local_exists) }}</pre>
+              </details>
+              <label
+                >冲突选择<select v-model="choices[conflict.path]">
+                  <option value="">请选择</option>
+                  <option value="local">保留本地</option>
+                  <option value="upstream">采用上游</option>
+                  <option value="delete">删除此文件</option>
+                </select></label
+              >
+            </article>
+            <button
+              v-if="conflicts !== null"
+              :disabled="
+                busy || dirty || conflicts.some((c) => !choices[c.path])
+              "
+              @click="merge"
+            >
+              保存合并候选
+            </button>
+          </details>
+          <details v-if="canRevoke && selected.available">
+            <summary>撤销此来源版本</summary>
+            <p>
+              该版本及沿其派生、合并的版本将不能再保存为可用参考；原文与历史保留。
+            </p>
+            <label>撤销原因<input v-model="reason" maxlength="1000" /></label
+            ><button
+              :disabled="busy || dirty || !reason.trim()"
+              @click="revoke"
+            >
+              撤销此版本及派生引用
+            </button>
+          </details>
+        </section>
+      </div>
+    </section>
   </main>
 </template>
 <style scoped>
@@ -701,6 +817,31 @@ onBeforeUnmount(() => {
   max-width: 1250px;
   margin: 2rem auto;
   padding: 0 1.5rem;
+}
+.skills-draft-notice,
+.skills-task-notice {
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  border: 1px solid #d8d1b7;
+  border-radius: 10px;
+  background: #f6f2e7;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.skills-task-notice > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.skills-task-notice p {
+  margin-bottom: 0;
+}
+.version-card[aria-pressed="true"] {
+  outline: 2px solid #91ad98;
+  outline-offset: 2px;
 }
 .skill-layout {
   display: grid;

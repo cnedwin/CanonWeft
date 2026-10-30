@@ -1,5 +1,9 @@
 import { loginAsOwner } from "./owner-session";
-import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
+import {
+  openIPSection,
+  openIPTool,
+  saveReasonedCandidate,
+} from "./ip-edit-helper";
 import { test, expect } from "@playwright/test";
 test("持久候选检查支持暂停恢复取消且不自动采用", async ({ page }) => {
   const errors: string[] = [];
@@ -14,7 +18,7 @@ test("持久候选检查支持暂停恢复取消且不自动采用", async ({ pa
   await page.getByRole("button", { name: "新增角色或实体" }).click();
   await page.getByLabel("实体名称", { exact: true }).fill("沈晴");
   await saveReasonedCandidate(page);
-  await openIPSection(page, "知识与任务");
+  await openIPTool(page, "流程检查");
   await page
     .getByLabel("待检查候选", { exact: true })
     .selectOption({ index: 1 });
@@ -31,7 +35,7 @@ test("持久候选检查支持暂停恢复取消且不自动采用", async ({ pa
   await page.getByRole("button", { name, exact: true }).click();
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByRole("button", { name: "正史", exact: true }).click();
-  await openIPSection(page, "知识与任务");
+  await openIPTool(page, "流程检查");
   await expect(
     card.getByRole("heading", { name: "已暂停", exact: true }),
   ).toBeVisible();

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { openIPSection } from "./ip-edit-helper";
+import { openIPTool } from "./ip-edit-helper";
 
 // Real app/login/project/branch; only generation reads and trial choices are
 // controlled UI fixtures. These tests do not prove provider streaming.
@@ -146,7 +146,7 @@ async function openPanel(page: Page, output = false) {
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
-  await openIPSection(page, "知识与任务");
+  await openIPTool(page, "AI候选");
   const panel = page.locator(".generation-panel");
   await panel.getByRole("button", { name: "查看任务 111111" }).click();
   await expect(panel.locator(".candidate-output")).toContainText(

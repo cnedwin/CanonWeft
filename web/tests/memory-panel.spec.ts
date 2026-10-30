@@ -5,6 +5,16 @@ import type {
   MemorySession,
 } from "../src/features/ip/memory";
 
+async function openMemorySection(
+  page: Page,
+  name: "记忆浏览" | "整理候选" | "短期会话" | "写作材料",
+) {
+  await page
+    .getByRole("navigation", { name: "创作记忆分区", exact: true })
+    .getByRole("button", { name, exact: true })
+    .click();
+}
+
 const source = {
   id: "resource-1",
   name: "人物前史",
@@ -221,6 +231,7 @@ test("资料整理先准备后启动，选中结果导入私人候选且保留�
   });
   await page.goto("/tests/fixtures/memory-panel.html");
   await page.getByLabel("当前工作会话").selectOption(session.id);
+  await openMemorySection(page, "整理候选");
   const panel = page.getByTestId("memory-extraction");
   await panel.getByText("从作品资料整理记忆", { exact: true }).click();
   await panel.getByLabel("人物前史", { exact: true }).check();
@@ -248,6 +259,7 @@ test("资料整理先准备后启动，选中结果导入私人候选且保留�
   await panel
     .getByRole("button", { name: "将选中结果加入私人候选", exact: true })
     .click();
+  await openMemorySection(page, "记忆浏览");
   await expect(
     page.getByText("推测 · 未确认候选", { exact: true }),
   ).toBeVisible();
@@ -256,6 +268,7 @@ test("资料整理先准备后启动，选中结果导入私人候选且保留�
   ).toBeVisible();
   expect(dispatches).toBe(1);
   expect(imports).toBe(1);
+  await openMemorySection(page, "整理候选");
   await panel
     .getByRole("button", {
       name: "完成本次整理审阅（不自动采用）",
@@ -366,6 +379,7 @@ test("候选保留来源、显式采用与撤回，编辑共享项需重新采�
   await expect(page.getByTestId("memory-item-memory-1")).toContainText(
     "已采用的创作约束",
   );
+  await openMemorySection(page, "写作材料");
   await page.getByRole("button", { name: "编译上下文", exact: true }).click();
   await expect(page.getByTestId("memory-pack")).toContainText("共 20 条");
   await expect(page.getByTestId("memory-pack")).toContainText(
@@ -378,6 +392,7 @@ test("候选保留来源、显式采用与撤回，编辑共享项需重新采�
   await expect(page.getByTestId("memory-source")).toContainText(
     "林舟守住承诺。",
   );
+  await openMemorySection(page, "记忆浏览");
   await page
     .getByTestId("memory-item-memory-1")
     .getByRole("button", { name: "编辑记忆" })
@@ -407,6 +422,7 @@ test("候选保留来源、显式采用与撤回，编辑共享项需重新采�
   await expect(page.getByTestId("memory-item-memory-1")).toContainText(
     "已撤回",
   );
+  await openMemorySection(page, "写作材料");
   await page
     .getByTestId("memory-pack")
     .screenshot({ path: "test-results/memory-panel/verified-panel.png" });
@@ -503,9 +519,11 @@ test("分支卸载后迟到的编译结果不会进入新分支", async ({ page 
     },
   );
   await page.goto("/tests/fixtures/memory-panel.html");
+  await openMemorySection(page, "写作材料");
   await page.getByRole("button", { name: "编译上下文", exact: true }).click();
   await expect.poll(() => started).toBe(true);
   await page.getByRole("button", { name: "模拟外部切换" }).click();
+  await openMemorySection(page, "写作材料");
   await expect(
     page.getByRole("button", { name: "编译上下文", exact: true }),
   ).toBeEnabled();

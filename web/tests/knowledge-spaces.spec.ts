@@ -1,6 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
-import { openIPSection } from "./ip-edit-helper";
+import { openIPSection, openKnowledgeView } from "./ip-edit-helper";
 
 test("工作资料分类可恢复并随候选发布，默认检索不把计划当作证据", async ({
   page,
@@ -36,13 +36,14 @@ test("工作资料分类可恢复并随候选发布，默认检索不把计划�
   await expect(page.getByLabel("知识空间", { exact: true })).toHaveValue(
     "working",
   );
-  await openIPSection(page, "知识与任务");
+  await openKnowledgeView(page, "索引任务");
   await page
     .getByRole("button", { name: "构建 / 更新检索索引", exact: true })
     .click();
   await expect(
     page.getByText("索引已就绪，共 0 个原文片段。", { exact: true }),
   ).toBeVisible();
+  await openKnowledgeView(page, "检索资料");
   await page.getByLabel("明确纳入项目工作资料").check();
   await page.getByLabel("我的资料草稿：结局规划", { exact: true }).check();
   await page.getByLabel("要查找的线索").fill("完善这个结局计划");
@@ -73,9 +74,10 @@ test("工作资料分类可恢复并随候选发布，默认检索不把计划�
   await expect(
     page.getByText("整组内容已发布，关联设定与资料保持同一版本。"),
   ).toBeVisible();
-  await openIPSection(page, "知识与任务");
+  await openKnowledgeView(page, "索引任务");
   await page.getByRole("button", { name: "构建 / 更新检索索引" }).click();
   await expect(page.getByText("索引已就绪，共 1 个原文片段。")).toBeVisible();
+  await openKnowledgeView(page, "检索资料");
   await page.getByLabel("要查找的线索").fill("宝剑");
   await page.getByRole("button", { name: "查找并保存证据包" }).click();
   await expect(

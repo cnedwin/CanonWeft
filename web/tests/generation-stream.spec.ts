@@ -1,6 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
-import { openIPSection } from "./ip-edit-helper";
+import { openIPTool } from "./ip-edit-helper";
 
 test("实时预览界面：刷新后可读暂存内容，过期后清除；受控UI响应不调用模型", async ({
   page,
@@ -72,7 +72,7 @@ test("实时预览界面：刷新后可读暂存内容，过期后清除；受�
   await page.getByRole("button", { name: "打开设定库" }).click();
   await page.getByLabel("分支名称", { exact: true }).fill("正史");
   await page.getByRole("button", { name: "创建分支", exact: true }).click();
-  await openIPSection(page, "知识与任务");
+  await openIPTool(page, "AI候选");
   const panel = page.locator(".generation-panel");
   await panel.getByRole("button", { name: "查看任务 111111" }).click();
   await expect(panel.getByLabel("未确认的生成预览")).toContainText(
@@ -88,7 +88,7 @@ test("实时预览界面：刷新后可读暂存内容，过期后清除；受�
     .getByRole("navigation", { name: "设定分支" })
     .getByRole("button", { name: "正史", exact: true })
     .click();
-  await openIPSection(page, "知识与任务");
+  await openIPTool(page, "AI候选");
   await panel.getByRole("button", { name: "查看任务 111111" }).click();
   await expect(panel.getByLabel("未确认的生成预览")).toContainText(
     "第一段：林舟推开门。",

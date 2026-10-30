@@ -18,7 +18,11 @@ const props = defineProps<{
   project: Project;
   initialSuite?: string;
 }>();
-const emit = defineEmits<{ expired: []; blocking: [boolean] }>();
+const emit = defineEmits<{
+  expired: [];
+  blocking: [boolean];
+  attention: [value: { unknown: number; review: number; active: number }];
+}>();
 type Suite = {
   id: string;
   name: string;
@@ -123,6 +127,41 @@ const options = ref<
 const runs = ref<Run[]>([]);
 const bindings = ref<Binding[]>([]);
 const selected = ref<Run | null>(null);
+const runQuery = ref("");
+const runState = ref("");
+const knownRuns = computed(() => {
+  const known = new Map(
+    runs.value.filter((run) => !run.retention).map((run) => [run.id, run]),
+  );
+  if (selected.value && !selected.value.retention)
+    known.set(selected.value.id, selected.value);
+  return [...known.values()];
+});
+const taskAttention = computed(() => ({
+  unknown: knownRuns.value.filter(
+    (run) =>
+      run.state === "UNKNOWN" ||
+      (run.steps ?? []).some((step) => step.state === "UNKNOWN"),
+  ).length,
+  review: knownRuns.value.filter((run) => run.state === "REVIEW_REQUIRED")
+    .length,
+  active: knownRuns.value.filter((run) =>
+    ["QUEUED", "RUNNING"].includes(run.state),
+  ).length,
+}));
+watch(taskAttention, (value) => emit("attention", value));
+const filteredRuns = computed(() => {
+  const text = runQuery.value.trim().toLocaleLowerCase();
+  return runs.value.filter(
+    (run) =>
+      !run.retention &&
+      (!runState.value || run.state === runState.value) &&
+      (!text ||
+        [run.id, run.frozen.suite.name, labels[run.state] ?? run.state].some(
+          (value) => value.toLocaleLowerCase().includes(text),
+        )),
+  );
+});
 const visibleStepCount = ref(50);
 watch(
   () => selected.value?.id,
@@ -597,8 +636,13 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="panel qualification-panel" aria-label="独立评测与用途启用">
-    <h2>独立评测与用途启用</h2>
-    <p>
+    <header class="section-heading">
+      <div>
+        <p class="eyebrow">准备范围 · 独立证据 · 明确启用</p>
+        <h2>独立评测与用途启用</h2>
+      </div>
+    </header>
+    <p class="author-page-description">
       固定能力清单、模型或隔离运行环境及任务范围。同一任务比较无方法、现有基线和候选版本，各自使用新上下文并重复运行。通过机械检查仍未取得小说文学、视觉或游戏专业质量资格。
     </p>
     <p>
@@ -606,6 +650,18 @@ onBeforeUnmount(() => {
     </p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
+    <aside
+      v-if="
+        taskAttention.unknown || taskAttention.review || taskAttention.active
+      "
+      class="qualification-attention"
+    >
+      已读取评测：结果未知 {{ taskAttention.unknown }} 项 · 等待维护检查
+      {{ taskAttention.review }} 项 · 进行中
+      {{ taskAttention.active }}
+      项。请在下方历史中核对；未知回执与费用不会因页面切换而自动重试或重新授予资格。
+    </aside>
+    <h3>1. 准备固定的评测范围</h3>
     <form @submit.prevent="estimate">
       <fieldset :disabled="busy || !canEdit">
         <label
@@ -713,13 +769,38 @@ onBeforeUnmount(() => {
         开始独立对照评测
       </button>
     </article>
-    <button class="quiet" :disabled="busy" @click="perform(refresh)">
-      刷新评测与启用历史
-    </button>
-    <ul>
-      <li v-for="run in runs.filter((r) => !r.retention)" :key="run.id">
+    <div class="section-heading qualification-history-heading">
+      <h3>2. 评测记录与证据</h3>
+      <button class="quiet" :disabled="busy" @click="perform(refresh)">
+        刷新评测与启用历史
+      </button>
+    </div>
+    <div class="qualification-filters">
+      <label
+        >搜索评测记录<input
+          v-model="runQuery"
+          type="search"
+          aria-label="搜索独立评测记录"
+          placeholder="评测集、状态或记录编号" /></label
+      ><label
+        >评测状态<select v-model="runState" aria-label="筛选独立评测状态">
+          <option value="">全部状态</option>
+          <option v-for="(name, value) in labels" :key="value" :value="value">
+            {{ name }}
+          </option>
+        </select></label
+      >
+    </div>
+    <p class="muted">
+      当前显示 {{ filteredRuns.length }} /
+      {{ runs.filter((run) => !run.retention).length }}
+      个已读取评测。资格仅对应所列固定版本与范围。
+    </p>
+    <ul class="qualification-runs">
+      <li v-for="run in filteredRuns" :key="run.id">
         <button
           class="quiet"
+          :aria-pressed="selected?.id === run.id"
           :disabled="busy"
           @click="perform(() => read(run.id))"
         >
@@ -866,7 +947,7 @@ onBeforeUnmount(() => {
         </button>
       </details>
     </article>
-    <h3>用途绑定与回退历史</h3>
+    <h3 class="qualification-bindings-heading">3. 用途绑定与回退历史</h3>
     <p v-if="!bindings.length">尚无已取得资格的用途绑定。</p>
     <details v-if="owner">
       <summary>项目每周评测（默认关闭付费）</summary>
@@ -961,6 +1042,45 @@ onBeforeUnmount(() => {
 <style scoped>
 .qualification-panel {
   margin-block: 1.5rem;
+}
+.qualification-attention {
+  margin: 20px 0;
+  padding: 16px;
+  background: #f6f2e7;
+  border: 1px solid #d8d1b7;
+  border-radius: 10px;
+  line-height: 1.8;
+  font-size: 13px;
+}
+.qualification-history-heading,
+.qualification-bindings-heading {
+  padding-top: 24px;
+  margin-top: 28px;
+  border-top: 1px solid #e1e5da;
+}
+.qualification-history-heading h3 {
+  margin: 0;
+}
+.qualification-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.qualification-runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+}
+.qualification-runs button[aria-pressed="true"] {
+  background: #edf1e6;
+  border-color: #91ad98;
+}
+@media (max-width: 680px) {
+  .qualification-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 fieldset {
   min-width: 0;

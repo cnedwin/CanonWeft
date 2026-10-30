@@ -20,6 +20,9 @@ const emit = defineEmits<{
   expired: [];
   blocking: [boolean];
   busy: [boolean];
+  attention: [
+    value: { scope: string; unknown: number; review: number; active: number },
+  ];
 }>();
 type Trial = {
   id: string;
@@ -63,6 +66,18 @@ const currentJobs = computed(() =>
     (j) => !j.retention && j.frozen.version_id === props.capability.id,
   ),
 );
+watch([currentJobs, selected], () => {
+  const known = new Map(currentJobs.value.map((job) => [job.id, job]));
+  if (selected.value) known.set(selected.value.id, selected.value);
+  const values = [...known.values()];
+  emit("attention", {
+    scope: `tool:${props.capability.id}`,
+    unknown: values.filter((job) => job.state === "UNKNOWN").length,
+    review: 0,
+    active: values.filter((job) => ["QUEUED", "RUNNING"].includes(job.state))
+      .length,
+  });
+});
 let disposed = false;
 let polling = false;
 let readSequence = 0;
