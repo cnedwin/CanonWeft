@@ -124,10 +124,10 @@ async function fixture(page: Page, initial?: NovelDraft) {
   if (initial)
     await page
       .getByRole("button", {
-        name: `${initial.setup.title} · 第${initial.step}步`,
+        name: new RegExp(`${initial.setup.title}.*继续编辑`),
       })
       .click();
-  else await page.getByRole("button", { name: "自由填写开书方案" }).click();
+  else await page.getByRole("button", { name: "自由填写方案" }).click();
   return {
     puts,
     confirms,
@@ -161,9 +161,9 @@ test("自动保存期间继续输入不被旧回执覆盖，离开前保护未�
   page,
 }) => {
   const state = await fixture(page);
-  await expect(page.getByText("私人建书草稿 ·", { exact: false })).toContainText(
-    "草稿已保存",
-  );
+  await expect(
+    page.getByText("私人建书草稿 ·", { exact: false }),
+  ).toContainText("草稿已保存");
   const wait = state.holdNext();
   await page.getByLabel("书名", { exact: true }).fill("雾城");
   await expect.poll(() => state.puts.length).toBe(2);
@@ -184,7 +184,7 @@ test("自动保存期间继续输入不被旧回执覆盖，离开前保护未�
   );
   await page.getByRole("button", { name: "保存并返回书架" }).click();
   await page.getByRole("button", { name: "新建小说", exact: true }).click();
-  await page.getByRole("button", { name: "雾城药师 · 第1步" }).click();
+  await page.getByRole("button", { name: /雾城药师.*继续编辑/ }).click();
   await expect(page.getByLabel("书名", { exact: true })).toHaveValue(
     "雾城药师",
   );

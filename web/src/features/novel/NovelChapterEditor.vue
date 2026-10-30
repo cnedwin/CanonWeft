@@ -266,6 +266,14 @@ let saveSequence = 0;
 const focusMode = ref(false);
 const textToolsOpen = ref(false);
 const referenceOpen = ref(false);
+const activeWritingTools = computed(() =>
+  [
+    oldDraftOpen.value ? "旧稿对照" : "",
+    historyOpen.value ? "修订历史" : "",
+    basisVisible.value ? "写作依据" : "",
+    ledgerOpen.value ? "本章账本" : "",
+  ].filter(Boolean),
+);
 const manualEditContext = computed(() => {
   if (!draft.value) return "";
   const { text: manuscript, ...context } = draft.value.document;
@@ -1116,83 +1124,139 @@ onBeforeUnmount(() => {
       <p v-if="!draft.ready" role="alert">
         {{ draft.reason }}。原稿仍可编辑和下载。
       </p>
-      <div class="actions chapter-tools">
-        <button
-          class="focus-keep"
-          :disabled="busy || assistant || ledgerOpen"
-          :aria-pressed="focusMode"
-          @click="toggleFocus"
+      <div class="chapter-tools">
+        <div
+          class="chapter-primary-actions"
+          role="group"
+          aria-label="常用写作动作"
         >
-          {{ focusMode ? "退出专注写作" : "进入专注写作" }}
-        </button>
-        <button
-          class="focus-keep"
-          :aria-expanded="textToolsOpen"
-          @click="textToolsOpen = !textToolsOpen"
+          <button
+            class="focus-keep"
+            :disabled="locked || !!unconfirmedSave"
+            @click="() => perform(save)"
+          >
+            保存私人稿
+          </button>
+          <button
+            class="quiet"
+            :disabled="locked || assistant || !!unconfirmedSave"
+            @click="regularAssistant"
+          >
+            请 Agent 写作或修改
+          </button>
+          <button
+            class="quiet"
+            :disabled="locked || assistant || !!unconfirmedSave"
+            @click="requestAssistant('refine')"
+          >
+            原地精修
+          </button>
+          <button
+            class="quiet focus-keep"
+            :disabled="busy || assistant || ledgerOpen"
+            :aria-pressed="focusMode"
+            @click="toggleFocus"
+          >
+            {{ focusMode ? "退出专注写作" : "进入专注写作" }}
+          </button>
+        </div>
+        <div
+          class="chapter-secondary-actions"
+          role="group"
+          aria-label="正文辅助工具"
         >
-          章内查找与替换
-        </button>
-        <button
-          class="focus-keep"
-          :disabled="locked || !!unconfirmedSave"
-          @click="() => perform(save)"
-        >
-          保存私人稿
-        </button>
-        <button
-          :disabled="locked || assistant || basisLoading || !!unconfirmedSave"
-          @click="refreshBasis"
-        >
-          更新写作依据，保留正文
-        </button>
-        <button
-          :disabled="locked || assistant || !!unconfirmedSave"
-          @click="regularAssistant"
-        >
-          请 Agent 写作或修改
-        </button>
-        <button
-          :disabled="locked || assistant || !!unconfirmedSave"
-          @click="openLedger"
-        >
-          {{ activeStoryTarget ? "打开对应账本" : "提取与编辑本章账本" }}
-        </button>
-        <button
-          :disabled="locked || assistant || !!unconfirmedSave"
-          @click="oldDraftOpen = !oldDraftOpen"
-        >
-          对照与取回旧稿
-        </button>
-        <button
-          :disabled="
-            locked || assistant || !!unconfirmedSave || historyBlocking
-          "
-          @click="historyOpen = !historyOpen"
-          :aria-expanded="historyOpen"
-        >
-          章节修订历史
-        </button>
-        <button
-          class="focus-keep"
-          :disabled="busy || assistant || ledgerOpen"
-          :aria-expanded="referenceOpen"
-          @click="toggleReference"
-        >
-          跨章原文参照
-        </button>
-        <button class="focus-keep" @click="download">下载当前私人稿</button>
-        <button v-if="assistant" :disabled="busy" @click="closeAssistant">
-          返回手动写作
-        </button>
-        <button
-          v-if="assistant && assistantCancelled"
-          class="quiet"
-          :disabled="busy"
-          @click="discardAssistantInput"
-        >
-          放弃助手输入并返回正文
-        </button>
+          <button
+            class="quiet focus-keep"
+            :aria-expanded="textToolsOpen"
+            @click="textToolsOpen = !textToolsOpen"
+          >
+            章内查找与替换
+          </button>
+          <button
+            class="quiet focus-keep"
+            :disabled="busy || assistant || ledgerOpen"
+            :aria-expanded="referenceOpen"
+            @click="toggleReference"
+          >
+            跨章原文参照
+          </button>
+        </div>
+        <details class="chapter-more-tools">
+          <summary>
+            更多写作工具
+            <span v-if="activeWritingTools.length" class="chapter-tool-count">
+              {{ activeWritingTools.length }} 项已打开
+            </span>
+          </summary>
+          <div
+            class="chapter-more-actions"
+            role="group"
+            aria-label="更多写作工具"
+          >
+            <button
+              class="quiet"
+              :disabled="
+                locked || assistant || !!unconfirmedSave || historyBlocking
+              "
+              @click="historyOpen = !historyOpen"
+              :aria-expanded="historyOpen"
+            >
+              章节修订历史
+            </button>
+            <button
+              class="quiet"
+              :disabled="locked || assistant || !!unconfirmedSave"
+              :aria-expanded="oldDraftOpen"
+              @click="oldDraftOpen = !oldDraftOpen"
+            >
+              对照与取回旧稿
+            </button>
+            <button
+              class="quiet"
+              :disabled="
+                locked || assistant || basisLoading || !!unconfirmedSave
+              "
+              @click="refreshBasis"
+            >
+              更新写作依据，保留正文
+            </button>
+            <button
+              class="quiet"
+              :disabled="locked || assistant || !!unconfirmedSave"
+              @click="openLedger"
+            >
+              {{ activeStoryTarget ? "打开对应账本" : "提取与编辑本章账本" }}
+            </button>
+            <button class="quiet focus-keep" @click="download">
+              下载当前私人稿
+            </button>
+          </div>
+        </details>
+        <div v-if="assistant" class="chapter-primary-actions">
+          <button :disabled="busy" @click="closeAssistant">返回手动写作</button>
+          <button
+            v-if="assistantCancelled"
+            class="quiet"
+            :disabled="busy"
+            @click="discardAssistantInput"
+          >
+            放弃助手输入并返回正文
+          </button>
+        </div>
       </div>
+      <p
+        v-if="activeWritingTools.length"
+        class="chapter-open-tools"
+        role="status"
+      >
+        已打开：{{ activeWritingTools.join("、") }}。
+        <template v-if="focusMode">
+          退出专注写作后可继续查看，工具内的输入仍保留。
+        </template>
+        <template v-else
+          >可在各工具内关闭；收起工具菜单会保留当前面板。</template
+        >
+      </p>
       <NovelChapterSaveRecovery
         v-if="unconfirmedSave"
         :root="root"
@@ -1282,39 +1346,45 @@ onBeforeUnmount(() => {
           <label
             >章节标题<input v-model="draft.document.title" maxlength="300"
           /></label>
-          <div v-show="!focusMode" class="chapter-context">
-            <label
-              >故事位置<input
-                v-model.number="draft.document.story_time"
-                type="number"
-                min="0"
-                max="9007199254740991"
-                step="1"
-            /></label>
-            <label
-              >知情视角<select v-model="draft.document.perspective">
-                <option value="">按小说叙事方式与场景安排</option>
-                <option
-                  v-for="entity in characters"
-                  :key="entity.id"
-                  :value="entity.id"
-                >
-                  {{ entity.name }} · {{ entity.id }}
-                </option>
-                <option
-                  v-if="
-                    draft.document.perspective &&
-                    !characters.some(
-                      (e) => e.id === draft!.document.perspective,
-                    )
-                  "
-                  :value="draft.document.perspective"
-                >
-                  原视角已不可用，请重新选择
-                </option>
-              </select></label
-            >
-          </div>
+          <details v-show="!focusMode" class="chapter-context-settings">
+            <summary>
+              故事位置与知情视角
+              <span class="muted">位置 {{ draft.document.story_time }}</span>
+            </summary>
+            <div class="chapter-context">
+              <label
+                >故事位置<input
+                  v-model.number="draft.document.story_time"
+                  type="number"
+                  min="0"
+                  max="9007199254740991"
+                  step="1"
+              /></label>
+              <label
+                >知情视角<select v-model="draft.document.perspective">
+                  <option value="">按小说叙事方式与场景安排</option>
+                  <option
+                    v-for="entity in characters"
+                    :key="entity.id"
+                    :value="entity.id"
+                  >
+                    {{ entity.name }} · {{ entity.id }}
+                  </option>
+                  <option
+                    v-if="
+                      draft.document.perspective &&
+                      !characters.some(
+                        (e) => e.id === draft!.document.perspective,
+                      )
+                    "
+                    :value="draft.document.perspective"
+                  >
+                    原视角已不可用，请重新选择
+                  </option>
+                </select></label
+              >
+            </div>
+          </details>
           <label
             >章节正文<textarea
               ref="manuscriptField"
@@ -1466,6 +1536,17 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.chapter-context-settings summary {
+  cursor: pointer;
+  color: #52665d;
+  font-size: 14px;
+}
+.chapter-context-settings summary span {
+  margin-left: 12px;
+}
+.chapter-context-settings[open] .chapter-context {
+  margin-top: 16px;
+}
 .chapter-workspace {
   display: grid;
   gap: 1rem;
@@ -1482,13 +1563,77 @@ onBeforeUnmount(() => {
   min-height: 65vh;
   font-size: 1.125rem;
 }
-.chapter-heading,
-.actions {
+.chapter-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+.chapter-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.75rem 1rem;
+}
+.chapter-primary-actions,
+.chapter-secondary-actions,
+.chapter-more-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.chapter-primary-actions {
+  grid-column: 1 / -1;
+}
+.chapter-secondary-actions button {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+.chapter-secondary-actions button[aria-expanded="true"],
+.chapter-more-actions button[aria-expanded="true"] {
+  background: #e5eee6;
+  border-color: #93b7a4;
+  color: #285c4d;
+}
+.chapter-more-tools {
+  min-width: 0;
+}
+.chapter-more-tools summary {
+  width: fit-content;
+  padding: 0.5rem 0;
+  cursor: pointer;
+  color: #52665d;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.chapter-more-tools summary:focus-visible {
+  outline: 2px solid #93b7a4;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.chapter-more-tools[open] {
+  grid-column: 1 / -1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d7ded5;
+  border-radius: 7px;
+  background: #fbfcf8;
+}
+.chapter-more-actions {
+  margin-top: 0.75rem;
+}
+.chapter-tool-count {
+  margin-left: 0.5rem;
+  color: #52665d;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.chapter-open-tools {
+  margin: 0;
+  color: #52665d;
+  font-size: 0.875rem;
 }
 .chapter-form {
   min-width: 0;
@@ -1537,6 +1682,9 @@ onBeforeUnmount(() => {
   overflow: auto;
 }
 @media (max-width: 760px) {
+  .chapter-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .chapter-context,
   .chapter-comparison {
     grid-template-columns: 1fr;

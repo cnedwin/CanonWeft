@@ -313,7 +313,10 @@ test("从全书证据回章稿，保存后返回原筛选和条目并重读当�
 }, info) => {
   const f = await fixture(page, info, true);
   try {
-    await page.getByText("全部创作工具", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "审稿与导出", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "全书剧情账本", exact: true })
       .click();
@@ -347,7 +350,10 @@ test("直接打开指定账本定位条目，保存返回原视图且不创建�
 }, info) => {
   const f = await fixture(page, info, true);
   try {
-    await page.getByText("全部创作工具", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "审稿与导出", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "全书剧情账本", exact: true })
       .click();
@@ -506,7 +512,10 @@ test("无本人私稿的正式账本仅回查即可返回，不因revision零而
 }, info) => {
   const f = await fixture(page, info, true, { noPrivate: true });
   try {
-    await page.getByText("全部创作工具", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "审稿与导出", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "全书剧情账本", exact: true })
       .click();

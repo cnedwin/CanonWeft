@@ -221,6 +221,7 @@ test("当前章与旧成书对照，明确取回只换正文并可撤销一次",
 }, info) => {
   const state = await fixture(page, info, "editor");
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "对照与取回旧稿", exact: true })
       .click();
@@ -269,6 +270,7 @@ test("当前手改与版本变化清除取回确认，旧读取迟到不覆盖�
 }, info) => {
   const state = await fixture(page, info, "editor");
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "对照与取回旧稿", exact: true })
       .click();
@@ -350,6 +352,7 @@ test("旧稿读取有界恢复、错章拒绝及当前权限撤销清除受保�
 }, info) => {
   const state = await fixture(page, info, "editor");
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "对照与取回旧稿", exact: true })
       .click();
@@ -384,6 +387,7 @@ test("取回遇保存冲突保留本页文本，不覆盖另一页稿件、不�
 }, info) => {
   const state = await fixture(page, info, "editor");
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "对照与取回旧稿", exact: true })
       .click();

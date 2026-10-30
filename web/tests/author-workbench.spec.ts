@@ -240,26 +240,44 @@ test("当前阶段来自有效规划；助手写章必须明确选择；所有�
   await expect(
     page.getByRole("region", { name: "本书当前阶段" }),
   ).toContainText("章节细纲与正文");
+  const navigation = page.getByRole("navigation", { name: "本书工作区" });
+  await expect(navigation.getByRole("button")).toHaveText([
+    "本书概览",
+    "故事规划",
+    "章节写作",
+    "人物与资料",
+    "审稿与导出",
+  ]);
+  await expect(page.getByText("全部创作工具", { exact: true })).toHaveCount(0);
+  for (const [section, tools] of [
+    [
+      "人物与资料",
+      ["资料变更与待复核", "批量角色与一句话完善", "本书角色与关系"],
+    ],
+    ["审稿与导出", ["整书与分卷导出", "整卷与全书审稿", "封面与场景图"]],
+  ] as const) {
+    await navigation
+      .getByRole("button", { name: section, exact: true })
+      .click();
+    for (const name of tools)
+      await expect(
+        page.getByRole("button", { name, exact: true }),
+      ).toBeVisible();
+  }
+  await page
+    .getByText("不确定从哪里开始？打开任务助手", { exact: true })
+    .click();
   await page.getByRole("button", { name: "写一章", exact: true }).click();
-  await expect(
-    page.getByRole("region", { name: "选择要写作的章节" }),
-  ).toBeVisible();
+  const chapterPicker = page.getByRole("region", { name: "选择要写作的章节" });
+  await expect(chapterPicker).toBeVisible();
   expect(
     state.requests.filter(
       (r) => r.path.endsWith("/chapters") && r.method === "POST",
     ),
   ).toHaveLength(0);
-  await expect(page.getByRole("button", { name: /未确认章/ })).toBeDisabled();
-  await page.getByText("全部创作工具", { exact: true }).click();
-  for (const name of [
-    "整书与分卷导出",
-    "整卷与全书审稿",
-    "封面与场景图",
-    "资料变更与待复核",
-    "批量角色与一句话完善",
-    "本书角色与关系",
-  ])
-    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  await expect(
+    chapterPicker.getByRole("button", { name: /未确认章/ }),
+  ).toBeDisabled();
   await page.screenshot({
     path: testInfo.outputPath("workspace-desktop.png"),
     fullPage: true,
@@ -274,7 +292,7 @@ test("当前阶段来自有效规划；助手写章必须明确选择；所有�
     path: testInfo.outputPath("workspace-mobile.png"),
     fullPage: true,
   });
-  await page
+  await chapterPicker
     .getByRole("button", { name: "写作 · 第一章", exact: true })
     .click();
   await expect(page.getByLabel("章节正文", { exact: true })).toHaveValue(
@@ -285,8 +303,12 @@ test("工作台章节跳转切换真实编辑器并保留每章原稿，窄屏�
   page,
 }, info) => {
   const state = await fixture(page, false, true);
+  await page
+    .getByText("不确定从哪里开始？打开任务助手", { exact: true })
+    .click();
   await page.getByRole("button", { name: "写一章", exact: true }).click();
   await page
+    .getByRole("region", { name: "选择要写作的章节" })
     .getByRole("button", { name: "写作 · 第一章", exact: true })
     .click();
   const field = page.getByLabel("章节正文", { exact: true });
@@ -322,10 +344,56 @@ test("工作台章节跳转切换真实编辑器并保留每章原稿，窄屏�
   ).toBe(false);
 });
 
+for (const origin of ["章节目录", "任务助手"] as const) {
+  test(`从${origin}进入编辑器，关闭后留在章节写作而不跳入规划`, async ({
+    page,
+  }) => {
+    const state = await fixture(page);
+    const navigation = page.getByRole("navigation", { name: "本书工作区" });
+    if (origin === "章节目录") {
+      await navigation
+        .getByRole("button", { name: "章节写作", exact: true })
+        .click();
+      await page
+        .getByRole("region", { name: "本书章节目录" })
+        .getByRole("button", { name: "打开第1章 · 第一章", exact: true })
+        .click();
+    } else {
+      await page
+        .getByText("不确定从哪里开始？打开任务助手", { exact: true })
+        .click();
+      await page.getByRole("button", { name: "写一章", exact: true }).click();
+      await page
+        .getByRole("region", { name: "选择要写作的章节" })
+        .getByRole("button", { name: "写作 · 第一章", exact: true })
+        .click();
+    }
+    await expect(page.getByLabel("章节正文", { exact: true })).toHaveValue(
+      initialText,
+    );
+    await page
+      .getByRole("button", { name: "保存并返回本书工作区", exact: true })
+      .click();
+    await expect(navigation).toBeVisible();
+    await expect(
+      navigation.getByRole("button", { name: "章节写作", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      navigation.getByRole("button", { name: "故事规划", exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      page.getByRole("region", { name: "本书章节目录" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("章节正文", { exact: true })).toHaveCount(0);
+    expect(state.writes).toEqual([]);
+  });
+}
+
 test("选区精修使用原预算任务；越界候选不能采用且不改正文", async ({ page }) => {
   const state = await fixture(page, true);
   state.candidate("门外。林舟缓缓停步。连门后也改写了。");
   await openRefinement(page);
+  await page.getByText("更多写作工具", { exact: true }).click();
   await expect(
     page.getByRole("button", { name: "提取与编辑本章账本", exact: true }),
   ).toBeDisabled();

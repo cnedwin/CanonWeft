@@ -41,6 +41,7 @@ const props = defineProps<{
   focusCharacters?: boolean;
   novelNavigation?: boolean;
   novelNavigationBusy?: boolean;
+  returnLabel?: string;
 }>();
 const characterLibrary = ref<InstanceType<typeof CharacterLibrary> | null>(
   null,
@@ -717,7 +718,7 @@ onUnmounted(() => {
         </p>
       </div>
       <button class="quiet" :disabled="leaveBlocked" @click="emit('close')">
-        返回项目书架
+        {{ returnLabel || "返回项目书架" }}
       </button>
     </div>
     <p v-if="error" class="error" role="alert">{{ error }}</p>

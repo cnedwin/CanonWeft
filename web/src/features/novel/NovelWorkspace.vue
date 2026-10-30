@@ -104,6 +104,25 @@ const overview = ref<PlanningOverview | null>(null);
 const loadingStage = ref(false);
 const stageError = ref("");
 const stage = computed(() => workspaceStage(overview.value?.stage));
+const homeSection = ref("overview");
+const homeSections = [
+  { id: "overview", label: "本书概览" },
+  { id: "planning", label: "故事规划" },
+  { id: "writing", label: "章节写作" },
+  { id: "library", label: "人物与资料" },
+  { id: "review", label: "审稿与导出" },
+];
+type ChapterOrigin = "home" | "planning" | "batch" | "export";
+const chapterOrigin = ref<ChapterOrigin>("home");
+const ordinaryReturnLabel = computed(
+  () =>
+    ({
+      home: "保存并返回本书工作区",
+      planning: "保存并返回章节规划",
+      batch: "保存并返回批量连写",
+      export: "保存并返回成书导出",
+    })[chapterOrigin.value],
+);
 const choosingChapter = ref<"write" | "refine" | null>(null);
 const chapterChoices = ref<
   { id: string; title: string; ready: boolean; reason: string }[]
@@ -213,13 +232,14 @@ async function routeIntent(intent: AuthorIntent) {
     return;
   }
   if (!onHome.value) return;
-  if (intent === "planning") planning.value = true;
+  if (intent === "planning") openPlanning();
   else if (intent === "characters") {
     focusCharacters.value = true;
     editing.value = true;
   } else if (intent === "materials") materials.value = true;
   else if (intent === "batch") batch.value = true;
   else {
+    homeSection.value = "writing";
     const request = ++chapterRequest;
     choosingChapter.value = intent;
     loadingChapters.value = true;
@@ -246,6 +266,7 @@ function chooseChapter(id: string) {
   const choice = chapterChoices.value.find((item) => item.id === id);
   if (!choice?.ready) return;
   initialChapterAction.value = choosingChapter.value ?? undefined;
+  chapterOrigin.value = "home";
   chapterId.value = id;
   choosingChapter.value = null;
   ++chapterRequest;
@@ -269,15 +290,15 @@ function closeChapter() {
   reviewing.value = returnToBookReview.value;
   storyLedger.value = returnToStoryLedger.value;
   proseSearch.value = returnToProseSearch.value;
-  exporting.value = false;
-  batch.value = false;
-  // The chapter's close action promises to return to its planning context.
-  planningResourceId.value = "";
-  planning.value =
+  const ordinary =
     !returnToReview.value &&
     !returnToBookReview.value &&
     !returnToStoryLedger.value &&
     !returnToProseSearch.value;
+  exporting.value = ordinary && chapterOrigin.value === "export";
+  batch.value = ordinary && chapterOrigin.value === "batch";
+  planning.value = ordinary && chapterOrigin.value === "planning";
+  if (!planning.value) planningResourceId.value = "";
   returnToProseSearch.value = false;
   proseSearchTarget.value = null;
   returnToStoryLedger.value = false;
@@ -345,6 +366,24 @@ function openCatalogChapter(id: string) {
   chapterId.value = id;
   choosingChapter.value = null;
   ++chapterRequest;
+}
+function openChapterFrom(id: string, origin: ChapterOrigin) {
+  chapterOrigin.value = origin;
+  openCatalogChapter(id);
+}
+function openPlanning() {
+  const kind =
+    overview.value?.stage === "OUTLINE_PLANNING"
+      ? "novel_plan_book"
+      : "novel_plan_world";
+  planningResourceId.value =
+    overview.value?.resources.find((item) => item.kind === kind)?.id ?? "";
+  planning.value = true;
+}
+function continueStage() {
+  if (overview.value?.stage === "DETAIL_PLANNING")
+    homeSection.value = "writing";
+  else openPlanning();
 }
 async function openResource(
   request: ResourceNavigationRequest,
@@ -458,12 +497,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="book-shell">
-    <NovelAuthorAssistant
-      :chapter-active="!!chapterId"
-      :tool-active="!onHome && !chapterId"
-      :disabled="!canEdit || (!onHome && !chapterId)"
-      @intent="routeIntent"
-    />
     <section
       v-if="navigationLoading || navigationError || navigationNotice"
       class="panel"
@@ -520,6 +553,7 @@ onBeforeUnmount(() => {
       :focus-characters="focusCharacters"
       :novel-navigation="canEdit"
       :novel-navigation-busy="navigationLoading"
+      return-label="返回本书工作区"
       @edit-resource="openResource($event, 'ip')"
       @close="editing = false"
       @expired="emit('expired')"
@@ -612,7 +646,7 @@ onBeforeUnmount(() => {
                   ? '保存并返回审稿报告'
                   : returnToReview
                     ? '保存并返回待复核清单'
-                    : undefined
+                    : ordinaryReturnLabel
       "
       ref="chapterEditor"
       @close="closeChapter"
@@ -652,7 +686,7 @@ onBeforeUnmount(() => {
         ['owner', 'publisher'].includes(project.role)
       "
       @close="exporting = false"
-      @edit="chapterId = $event"
+      @edit="openChapterFrom($event, 'export')"
       @expired="emit('expired')"
     />
     <NovelBatchDesk
@@ -661,7 +695,7 @@ onBeforeUnmount(() => {
       :project="project"
       :actor="actor"
       @close="batch = false"
-      @edit="chapterId = $event"
+      @edit="openChapterFrom($event, 'batch')"
       @expired="emit('expired')"
     />
     <NovelManuscriptDesk
@@ -692,7 +726,7 @@ onBeforeUnmount(() => {
       :project="project"
       :actor="actor"
       @close="closePlanning"
-      @write="chapterId = $event"
+      @write="openChapterFrom($event, 'planning')"
       @expired="emit('expired')"
     />
     <NovelMaterials
@@ -713,34 +747,92 @@ onBeforeUnmount(() => {
             {{ book.setup.target_words.toLocaleString() }}字计划
           </p>
         </div>
-        <button @click="emit('close')">返回书架</button>
+        <button class="quiet" @click="emit('close')">返回书架</button>
       </header>
-      <section class="panel stage-panel" aria-label="本书当前阶段">
+      <nav class="task-navigation" aria-label="本书工作区">
+        <button
+          v-for="section in homeSections"
+          :key="section.id"
+          class="quiet"
+          :aria-pressed="homeSection === section.id"
+          @click="homeSection = section.id"
+        >
+          {{ section.label }}
+        </button>
+      </nav>
+      <p v-if="stageError" class="error" role="alert">
+        {{ stageError }}
+        <button class="quiet" @click="loadStage">重新核对规划</button>
+      </p>
+      <section
+        v-show="homeSection === 'overview'"
+        class="panel stage-panel"
+        aria-label="本书当前阶段"
+      >
         <p class="eyebrow">
           {{ loadingStage ? "正在核对当前规划…" : "本书当前阶段" }}
         </p>
         <h2>{{ stage.title }}</h2>
         <p>{{ stage.description }}</p>
         <p v-if="overview?.reason" class="muted">{{ overview.reason }}</p>
-        <p v-if="stageError" role="alert">
-          {{ stageError }}
-          <button class="quiet" @click="loadStage">重新核对</button>
-        </p>
-        <button :disabled="loadingStage" @click="planning = true">
-          {{ stage.next }}
+        <button :disabled="loadingStage" @click="continueStage">
+          {{
+            overview?.stage === "DETAIL_PLANNING" ? "进入章节写作" : stage.next
+          }}
         </button>
+        <ol class="workflow-track" aria-label="长篇创作流程">
+          <li><strong>确定故事</strong><span>世界、人物与主线</span></li>
+          <li><strong>安排全书</strong><span>大纲、分卷与细纲</span></li>
+          <li><strong>写作与精修</strong><span>逐章写作或批量连写</span></li>
+          <li>
+            <strong>审稿与成书</strong><span>定位问题、修改复核、导出</span>
+          </li>
+        </ol>
       </section>
-      <NovelChapterCatalog
-        v-if="canEdit"
-        :key="`${book.id}:${book.settings_revision}`"
-        :book="book"
-        :enabled="overview?.stage === 'DETAIL_PLANNING'"
-        @chapter="openCatalogChapter"
-        @planning="planning = true"
-        @expired="emit('expired')"
-      />
+      <section v-show="homeSection === 'planning'" class="panel task-section">
+        <p class="eyebrow">先规划，再写作</p>
+        <h2>故事规划</h2>
+        <p>
+          在同一份规划中完善世界与故事、全书大纲、分卷章节和细纲。确认后的版本继续作为写作依据。
+        </p>
+        <div class="workspace-actions">
+          <button @click="openPlanning">打开本书规划</button>
+          <button v-if="canEdit" class="quiet" @click="settings = true">
+            修改小说设置与查看历史
+          </button>
+        </div>
+      </section>
+      <section v-show="homeSection === 'writing'" class="writing-section">
+        <section class="panel task-section">
+          <p class="eyebrow">逐章精写，也可批量推进</p>
+          <h2>章节写作</h2>
+          <p>
+            从下面目录进入章节；已有长稿可分章导入，连续写作可查看批次进度与恢复。
+          </p>
+          <div class="workspace-actions">
+            <button @click="batch = true">
+              {{ canEdit ? "快速连写 · 最多10章" : "查看连写批次" }}
+            </button>
+            <button v-if="canEdit" class="quiet" @click="routeIntent('refine')">
+              选择章节精修
+            </button>
+            <button class="quiet" @click="manuscript = true">
+              长稿分章导入 / 续导
+            </button>
+          </div>
+        </section>
+        <NovelChapterCatalog
+          v-if="canEdit"
+          :key="`${book.id}:${book.settings_revision}`"
+          :book="book"
+          :enabled="overview?.stage === 'DETAIL_PLANNING'"
+          @chapter="openChapterFrom($event, 'home')"
+          @planning="openPlanning"
+          @expired="emit('expired')"
+        />
+      </section>
       <section
-        v-if="choosingChapter"
+        v-if="choosingChapter && homeSection === 'writing'"
         class="panel"
         aria-label="选择要写作的章节"
       >
@@ -782,78 +874,100 @@ onBeforeUnmount(() => {
           class="quiet"
           @click="
             choosingChapter = null;
-            planning = true;
+            openPlanning();
           "
         >
           前往章节规划
         </button>
       </section>
-      <section class="panel">
-        <h2>常用动作</h2>
+      <section v-show="homeSection === 'library'" class="panel task-section">
+        <p class="eyebrow">贯穿全书的创作依据</p>
+        <h2>人物与资料</h2>
+        <h3>角色与世界</h3>
         <div class="workspace-actions">
-          <button @click="planning = true">规划世界、大纲与细纲</button>
-          <button @click="batch = true">快速连写 · 最多10章</button>
-          <button @click="materials = true">管理本书资料</button>
-          <button @click="manuscript = true">长稿分章导入 / 续导</button>
+          <button
+            @click="
+              focusCharacters = true;
+              editing = true;
+            "
+          >
+            本书角色与关系
+          </button>
+          <button
+            class="quiet"
+            @click="
+              focusCharacters = false;
+              editing = true;
+            "
+          >
+            编辑本书世界与角色
+          </button>
+          <button
+            v-if="canEdit"
+            class="quiet"
+            @click="designingCharacters = true"
+          >
+            批量角色与一句话完善
+          </button>
         </div>
-        <details class="tools-drawer">
-          <summary>全部创作工具</summary>
-          <h3>研究与资料</h3>
-          <div class="workspace-actions">
-            <button v-if="canEdit" @click="research = true">
-              题材研究与事实卡
-            </button>
-            <button v-if="canEdit" @click="materials = true">
-              资料采集与素材入库
-            </button>
-            <button v-if="canEdit" @click="sourceReview = true">
-              资料变更与待复核
-            </button>
-          </div>
-          <h3>人物与世界</h3>
-          <div class="workspace-actions">
-            <button v-if="canEdit" @click="designingCharacters = true">
-              批量角色与一句话完善
-            </button>
-            <button
-              @click="
-                focusCharacters = true;
-                editing = true;
-              "
-            >
-              本书角色与关系
-            </button>
-            <button
-              @click="
-                focusCharacters = false;
-                editing = true;
-              "
-            >
-              编辑本书世界与角色
-            </button>
-          </div>
-          <h3>审稿与成书</h3>
-          <div class="workspace-actions">
-            <button v-if="canEdit" @click="storyLedger = true">
-              全书剧情账本
-            </button>
-            <button :disabled="!canEdit" @click="proseSearch = true">
-              全书正文查找
-            </button>
-            <button v-if="canEdit" @click="reviewing = true">
-              整卷与全书审稿
-            </button>
-            <button v-if="canEdit" @click="images = true">封面与场景图</button>
-            <button v-if="canEdit" @click="exporting = true">
-              整书与分卷导出
-            </button>
-          </div>
-          <p class="muted">
-            角色卡保留姓名与关键词搜索、关系图、直接编辑和三视图参考。
-          </p>
-        </details>
+        <p class="muted">
+          角色卡包含姓名与关键词搜索、关系图、直接编辑和三视图参考。
+        </p>
+        <h3>资料与修改联动</h3>
+        <div class="workspace-actions">
+          <button class="quiet" @click="materials = true">管理本书资料</button>
+          <button v-if="canEdit" class="quiet" @click="research = true">
+            题材研究与事实卡
+          </button>
+          <button v-if="canEdit" class="quiet" @click="sourceReview = true">
+            资料变更与待复核
+          </button>
+        </div>
       </section>
-      <details class="panel">
+      <section v-show="homeSection === 'review'" class="panel task-section">
+        <p class="eyebrow">发现问题，定位修改，再复核</p>
+        <h2>审稿与导出</h2>
+        <div class="workspace-actions">
+          <button v-if="canEdit" @click="reviewing = true">
+            整卷与全书审稿
+          </button>
+          <button v-if="canEdit" class="quiet" @click="storyLedger = true">
+            全书剧情账本
+          </button>
+          <button
+            class="quiet"
+            :disabled="!canEdit"
+            @click="proseSearch = true"
+          >
+            全书正文查找
+          </button>
+        </div>
+        <h3>整理成书</h3>
+        <div class="workspace-actions">
+          <button v-if="canEdit" class="quiet" @click="images = true">
+            封面与场景图
+          </button>
+          <button v-if="canEdit" class="quiet" @click="exporting = true">
+            整书与分卷导出
+          </button>
+        </div>
+        <p class="muted">
+          修改仍需保存、核对版本并复核；生成与图片操作仍需单独确认模型和预算。
+        </p>
+      </section>
+      <details v-if="canEdit" class="panel assistant-drawer">
+        <summary>不确定从哪里开始？打开任务助手</summary>
+        <NovelAuthorAssistant
+          :chapter-active="false"
+          :tool-active="false"
+          :disabled="!canEdit"
+          @intent="routeIntent"
+        />
+      </details>
+      <details
+        v-show="homeSection === 'overview' || homeSection === 'planning'"
+        class="panel"
+      >
         <summary>本书故事与创作约定</summary>
         <p>{{ book.setup.idea }}</p>
         <p><strong>主要冲突：</strong>{{ book.setup.conflict }}</p>
@@ -910,9 +1024,43 @@ onBeforeUnmount(() => {
 .book-shell {
   max-width: 1200px;
   margin: auto;
+  padding: 0 24px 32px;
 }
-.tools-drawer {
-  margin-top: 1.5rem;
+.task-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #d7ded5;
+}
+.task-navigation button[aria-pressed="true"] {
+  background: #285c4d;
+  border-color: #285c4d;
+  color: white;
+}
+.workflow-track {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  list-style: none;
+  padding: 22px 0 0;
+  margin: 26px 0 0;
+  border-top: 1px solid #e1e5da;
+  gap: 18px;
+}
+.workflow-track span {
+  display: block;
+  margin-top: 8px;
+  color: #5d6e63;
+  font-size: 13px;
+}
+.task-section h3 {
+  margin-top: 28px;
+}
+.assistant-drawer {
+  padding: 18px 24px;
+}
+.assistant-drawer :deep(.author-assistant) {
+  margin-top: 18px;
 }
 summary {
   cursor: pointer;
@@ -923,6 +1071,7 @@ summary {
   justify-content: space-between;
   gap: 20px;
   align-items: center;
+  flex-wrap: wrap;
 }
 .panel {
   margin-top: 20px;
@@ -945,6 +1094,15 @@ dd {
   white-space: pre-wrap;
 }
 @media (max-width: 600px) {
+  .book-shell {
+    padding: 0 16px 24px;
+  }
+  .workflow-track {
+    grid-template-columns: 1fr 1fr;
+  }
+  .task-navigation button {
+    padding: 10px 12px;
+  }
   dl {
     grid-template-columns: 1fr;
   }

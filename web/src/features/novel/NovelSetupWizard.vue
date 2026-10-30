@@ -539,26 +539,51 @@ onBeforeUnmount(() => {
     <header class="section-heading">
       <div>
         <h1>新建小说</h1>
-        <p>先确定创作方向，再完善世界、故事与章节规划。</p>
+        <p>选一个创作起点，核对方案后开始写书。</p>
       </div>
-      <button :disabled="actionBlocked" @click="close">保存并返回书架</button>
+      <button class="quiet" :disabled="actionBlocked" @click="close">
+        {{ draft ? "保存并返回书架" : "返回书架" }}
+      </button>
     </header>
+    <ol class="opening-phases" aria-label="建书流程">
+      <li :aria-current="!draft ? 'step' : undefined">
+        <span>1</span> 选择创作方向
+      </li>
+      <li :aria-current="draft ? 'step' : undefined">
+        <span>2</span> 核对开书方案
+      </li>
+    </ol>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="notice" role="status" class="notice">{{ notice }}</p>
     <button v-if="conflict" :disabled="actionBlocked" @click="recoverCopy">
       保留当前文字，另存恢复草稿
     </button>
+    <section v-if="!draft && drafts.length" class="panel resume-drafts">
+      <div class="resume-heading">
+        <h2>继续上次的开书草稿</h2>
+        <p class="muted">{{ drafts.length }} 份待确认</p>
+      </div>
+      <p v-if="drafts.length === 100" class="muted">
+        显示最近100份未确认草稿。
+      </p>
+      <ul>
+        <li v-for="item in drafts" :key="item.id">
+          <button :disabled="actionBlocked" @click="resume(item)">
+            <strong>{{ item.setup.title || "未命名小说" }}</strong>
+            <span>继续编辑 →</span>
+          </button>
+        </li>
+      </ul>
+    </section>
     <section
       v-if="!assisting"
       class="panel quick-opening"
       aria-label="一句话开书"
     >
-      <h2>选个方向，写一句想法</h2>
-      <p>
-        男频、女频是读者取向，任何作者都可以选择。预设免费提供完整起点，按你的故事自由修改。
-      </p>
+      <h2>{{ draft ? "需要调整创作起点？" : "选个方向，写一句想法" }}</h2>
+      <p>免费预设提供一份可编辑的完整起点；也可以从空白方案开始。</p>
       <details :open="!draft" class="direction-picker">
-        <summary>调整预设方向与想法</summary>
+        <summary>{{ draft ? "调整预设方向与想法" : "选择免费预设" }}</summary>
         <label
           >一句话创作想法<textarea
             v-model="quickIdea"
@@ -568,6 +593,7 @@ onBeforeUnmount(() => {
             placeholder="例如：一个修钟师发现全城的人都忘记了他的朋友。"
           />
         </label>
+        <p class="muted">男频、女频是读者取向，任何作者都可以选择。</p>
         <p v-if="catalogBusy">正在加载预设…</p>
         <section v-for="group in presetGroups" :key="group.name">
           <h3>{{ group.name }}</h3>
@@ -581,6 +607,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 :aria-label="`选择预设：${preset.name}`"
+                :title="preset.audience"
                 :aria-pressed="selectedPreset === preset.id"
                 :disabled="actionBlocked"
                 @click="selectedPreset = preset.id"
@@ -588,18 +615,22 @@ onBeforeUnmount(() => {
                 <strong>{{ preset.name }}</strong
                 ><span>{{ preset.audience }}</span>
               </button>
-              <p>{{ preset.description }}</p>
-              <p class="muted">{{ preset.reader_promise }}</p>
-              <button
-                type="button"
-                :disabled="actionBlocked || !!quickIdea.trim()"
-                @click="
-                  selectedPreset = preset.id;
-                  quickIdea = preset.example_idea;
-                "
-              >
-                使用示例：{{ preset.example_idea }}
-              </button>
+              <details class="preset-details">
+                <summary>查看方向与示例</summary>
+                <p>{{ preset.description }}</p>
+                <p class="muted">{{ preset.reader_promise }}</p>
+                <p class="preset-example">{{ preset.example_idea }}</p>
+                <button
+                  type="button"
+                  :disabled="actionBlocked || !!quickIdea.trim()"
+                  @click="
+                    selectedPreset = preset.id;
+                    quickIdea = preset.example_idea;
+                  "
+                >
+                  使用这个示例
+                </button>
+              </details>
             </article>
           </div>
         </section>
@@ -623,25 +654,28 @@ onBeforeUnmount(() => {
             {{ previewing ? "正在准备免费方案…" : "获取免费预设方案" }}
           </button>
           <button
+            v-if="!draft"
+            class="quiet"
             type="button"
             :disabled="actionBlocked || !defaults"
-            @click="openAssistant"
+            @click="fresh"
           >
-            用想法或附件让AI完善
+            自由填写方案
           </button>
         </div>
         <p class="muted">
-          预设只把你的想法保留到对应题材的静态草案，不理解或改写这句话。AI定制会先展示模型、价格与授权。
+          预设只把你的想法保留到对应题材的静态草案，不理解或改写这句话。
         </p>
       </details>
       <button
-        v-if="draft"
         type="button"
-        :disabled="actionBlocked"
+        class="quiet"
+        :disabled="actionBlocked || !defaults"
         @click="openAssistant"
       >
         用想法或附件让AI完善
       </button>
+      <p class="muted assistant-note">AI辅助会先展示模型、价格与授权。</p>
     </section>
     <section
       v-if="pendingPreset"
@@ -702,28 +736,14 @@ onBeforeUnmount(() => {
         取消换方向
       </button>
     </section>
-    <section v-if="!draft" class="panel">
-      <button :disabled="actionBlocked || !defaults" @click="fresh">
-        自由填写开书方案
-      </button>
-      <h2 v-if="drafts.length">继续设置草稿</h2>
-      <p v-if="drafts.length === 100">显示最近100份未确认草稿。</p>
-      <ul>
-        <li v-for="item in drafts" :key="item.id">
-          <button :disabled="actionBlocked" @click="resume(item)">
-            {{ item.setup.title || "未命名小说" }} · 第{{ item.step }}步
-          </button>
-        </li>
-      </ul>
-    </section>
     <NovelSetupAssistant
-      v-else-if="assisting && draft"
+      v-if="assisting && draft"
       :key="draft.id"
       :draft="draft"
       @close="assisting = false"
       @adopted="adoptAssistant"
     />
-    <template v-else>
+    <template v-else-if="draft">
       <h2>核对并编辑开书方案</h2>
       <p v-if="presetOnly" class="preset-mark">预设草案，未调用AI</p>
       <p v-else-if="draft.setup.preset_id" class="muted">
@@ -742,7 +762,15 @@ onBeforeUnmount(() => {
           {{ key }}：{{ detail }}
         </li>
       </ul>
-      <form class="panel wizard-form" @submit.prevent="confirm">
+      <form
+        class="panel wizard-form"
+        @invalid.capture="
+          ($event.currentTarget as HTMLFormElement)
+            .querySelectorAll('details')
+            .forEach((group) => (group.open = true))
+        "
+        @submit.prevent="confirm"
+      >
         <fieldset :disabled="confirming || importing">
           <legend>作品信息</legend>
           <label
@@ -765,8 +793,20 @@ onBeforeUnmount(() => {
             <option>言情</option>
             <option>奇幻</option>
           </datalist>
-          <details class="advanced">
-            <summary>高级设置：原稿、已有IP与语言</summary>
+          <details class="advanced" :open="Object.keys(fields).length > 0">
+            <summary>
+              原稿、已有IP与语言
+              <span class="disclosure-description">
+                {{ draft.setup.language || "语言待定" }} ·
+                {{
+                  draft.setup.source_mode === "import" ? "导入原稿" : "从零创作"
+                }}
+                ·
+                {{
+                  draft.setup.ip_mode === "existing" ? "沿用已有IP" : "新的IP"
+                }}
+              </span>
+            </summary>
             <label
               >语言<input v-model="draft.setup.language" maxlength="80"
             /></label>
@@ -864,128 +904,152 @@ onBeforeUnmount(() => {
             >希望避免的内容<textarea v-model="draft.setup.avoid" rows="2" />
           </label>
         </fieldset>
-        <fieldset :disabled="confirming || importing">
-          <legend>叙事与篇幅</legend>
-          <details class="advanced">
-            <summary>高级设置：叙事视角</summary>
-            <label
-              >叙事视角<input
-                v-model="draft.setup.perspective"
-                list="novel-perspectives" /></label
-            ><datalist id="novel-perspectives">
-              <option>第三人称限知</option>
-              <option>第一人称</option>
-              <option>第三人称全知</option>
-              <option>多视角交替</option>
-            </datalist>
-          </details>
-          <label
-            >文风与基调<textarea v-model="draft.setup.style" rows="3" />
-          </label>
-          <div class="numbers">
-            <label
-              >目标总字数<input
-                v-model.number="draft.setup.target_words"
-                type="number"
-                min="1"
-                max="100000000"
-                step="1" /></label
-            ><label
-              >计划卷数<input
-                v-model.number="draft.setup.volume_count"
-                type="number"
-                min="1"
-                max="10000"
-                step="1" /></label
-            ><label
-              >每章最少字数<input
-                v-model.number="draft.setup.chapter_min"
-                type="number"
-                min="1"
-                max="100000"
-                step="1" /></label
-            ><label
-              >每章最多字数<input
-                v-model.number="draft.setup.chapter_max"
-                type="number"
-                min="1"
-                max="100000"
-                step="1"
-            /></label>
-          </div>
-          <p>篇幅是规划目标，后续可以调整，不会为了凑字数自动扩写。</p>
-        </fieldset>
-        <fieldset :disabled="confirming || importing">
-          <legend>初始角色</legend>
-          <label
-            >主角设置方式<select v-model="draft.setup.character_mode">
-              <option value="">请选择</option>
-              <option value="manual">我来设置主角</option>
-              <option
-                value="architect"
-                :disabled="draft.setup.characters.length > 0"
-              >
-                根据故事方向由Agent拟定
-              </option>
-            </select></label
-          >
-          <p v-if="draft.setup.character_mode === 'architect'">
-            保存待拟定意图。创建小说时不会调用模型；角色候选仍需你审阅采用。
-          </p>
-          <template v-if="draft.setup.character_mode === 'manual'"
-            ><article
-              v-for="(character, index) in draft.setup.characters"
-              :key="index"
-              class="initial-character"
-            >
-              <h3>主角 {{ index + 1 }}</h3>
+        <details class="form-disclosure" :open="Object.keys(fields).length > 0">
+          <summary>
+            <strong>叙事与篇幅</strong>
+            <span class="disclosure-description">
+              {{ draft.setup.perspective || "视角待定" }} ·
+              {{ draft.setup.target_words.toLocaleString() }} 字 ·
+              {{ draft.setup.volume_count }} 卷
+            </span>
+          </summary>
+          <fieldset :disabled="confirming || importing">
+            <legend class="visually-hidden">叙事与篇幅</legend>
+            <details class="advanced" :open="Object.keys(fields).length > 0">
+              <summary>高级设置：叙事视角</summary>
               <label
-                >姓名或暂名<input
-                  v-model="character.name"
-                  maxlength="300" /></label
-              ><label>身份与职业<input v-model="character.identity" /></label
+                >叙事视角<input
+                  v-model="draft.setup.perspective"
+                  list="novel-perspectives" /></label
+              ><datalist id="novel-perspectives">
+                <option>第三人称限知</option>
+                <option>第一人称</option>
+                <option>第三人称全知</option>
+                <option>多视角交替</option>
+              </datalist>
+            </details>
+            <label
+              >文风与基调<textarea v-model="draft.setup.style" rows="3" />
+            </label>
+            <div class="numbers">
+              <label
+                >目标总字数<input
+                  v-model.number="draft.setup.target_words"
+                  type="number"
+                  min="1"
+                  max="100000000"
+                  step="1" /></label
               ><label
-                >核心目标<textarea v-model="character.goal" rows="2" /></label
+                >计划卷数<input
+                  v-model.number="draft.setup.volume_count"
+                  type="number"
+                  min="1"
+                  max="10000"
+                  step="1" /></label
               ><label
-                >人物背景<textarea
-                  v-model="character.background"
-                  rows="2"
-                /></label
+                >每章最少字数<input
+                  v-model.number="draft.setup.chapter_min"
+                  type="number"
+                  min="1"
+                  max="100000"
+                  step="1" /></label
               ><label
-                >性格<textarea
-                  v-model="character.personality"
-                  rows="2"
-                /></label
-              ><button
-                type="button"
-                @click="draft.setup.characters.splice(index, 1)"
-              >
-                移除此人物草稿
-              </button>
-            </article>
-            <button
-              type="button"
-              :disabled="draft.setup.characters.length >= 100"
-              @click="
-                draft.setup.characters.push({
-                  name: '',
-                  identity: '',
-                  goal: '',
-                  background: '',
-                  personality: '',
-                })
-              "
+                >每章最多字数<input
+                  v-model.number="draft.setup.chapter_max"
+                  type="number"
+                  min="1"
+                  max="100000"
+                  step="1"
+              /></label>
+            </div>
+            <p>篇幅是规划目标，后续可以调整，不会为了凑字数自动扩写。</p>
+          </fieldset>
+        </details>
+        <details class="form-disclosure" :open="Object.keys(fields).length > 0">
+          <summary>
+            <strong>初始角色</strong>
+            <span class="disclosure-description">
+              {{
+                draft.setup.character_mode === "manual"
+                  ? `已设置 ${draft.setup.characters.length} 位主角`
+                  : draft.setup.character_mode === "architect"
+                    ? "稍后根据故事方向拟定，采用前由你审阅"
+                    : "待选择主角设置方式"
+              }}
+            </span>
+          </summary>
+          <fieldset :disabled="confirming || importing">
+            <legend class="visually-hidden">初始角色</legend>
+            <label
+              >主角设置方式<select v-model="draft.setup.character_mode">
+                <option value="">请选择</option>
+                <option value="manual">我来设置主角</option>
+                <option
+                  value="architect"
+                  :disabled="draft.setup.characters.length > 0"
+                >
+                  根据故事方向由Agent拟定
+                </option>
+              </select></label
             >
-              添加一位主角
-            </button>
-            <p>
-              同名人物保持独立身份。配角和关系可在角色库继续添加。
-            </p></template
-          >
-        </fieldset>
+            <p v-if="draft.setup.character_mode === 'architect'">
+              保存待拟定意图。创建小说时不会调用模型；角色候选仍需你审阅采用。
+            </p>
+            <template v-if="draft.setup.character_mode === 'manual'"
+              ><article
+                v-for="(character, index) in draft.setup.characters"
+                :key="index"
+                class="initial-character"
+              >
+                <h3>主角 {{ index + 1 }}</h3>
+                <label
+                  >姓名或暂名<input
+                    v-model="character.name"
+                    maxlength="300" /></label
+                ><label>身份与职业<input v-model="character.identity" /></label
+                ><label
+                  >核心目标<textarea v-model="character.goal" rows="2" /></label
+                ><label
+                  >人物背景<textarea
+                    v-model="character.background"
+                    rows="2"
+                  /></label
+                ><label
+                  >性格<textarea
+                    v-model="character.personality"
+                    rows="2"
+                  /></label
+                ><button
+                  type="button"
+                  @click="draft.setup.characters.splice(index, 1)"
+                >
+                  移除此人物草稿
+                </button>
+              </article>
+              <button
+                type="button"
+                :disabled="draft.setup.characters.length >= 100"
+                @click="
+                  draft.setup.characters.push({
+                    name: '',
+                    identity: '',
+                    goal: '',
+                    background: '',
+                    personality: '',
+                  })
+                "
+              >
+                添加一位主角
+              </button>
+              <p>
+                同名人物保持独立身份。配角和关系可在角色库继续添加。
+              </p></template
+            >
+          </fieldset>
+        </details>
         <fieldset :disabled="confirming || importing">
           <legend>确认开书</legend>
-          <details class="advanced">
+          <details class="advanced" :open="Object.keys(fields).length > 0">
             <summary>高级设置：模型用途与核心保护</summary>
             <p>
               可先用AI辅助模式建书并稍后配置。已有
@@ -1076,7 +1140,6 @@ onBeforeUnmount(() => {
   max-width: 1000px;
   margin: auto;
 }
-.steps,
 footer,
 .section-heading {
   display: flex;
@@ -1087,20 +1150,85 @@ footer,
 .section-heading {
   justify-content: space-between;
 }
-.steps button[aria-current="step"] {
-  background: #183b32;
+.opening-phases {
+  display: flex;
+  gap: 24px;
+  padding: 0;
+  margin: 24px 0;
+  list-style: none;
+  color: #65766f;
+}
+.opening-phases li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.opening-phases li > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #cbd6cc;
+  border-radius: 50%;
+  font-size: 0.85rem;
+}
+.opening-phases li[aria-current="step"] {
+  color: #183b32;
+  font-weight: 700;
+}
+.opening-phases li[aria-current="step"] > span {
   color: white;
+  border-color: #24634e;
+  background: #24634e;
 }
 .wizard-form {
   margin-top: 18px;
 }
 .wizard-form fieldset + fieldset {
-  margin-top: 32px;
+  margin-top: 28px;
   border-top: 1px solid #d7ded7;
   padding-top: 24px;
 }
 .quick-opening {
   margin: 24px 0;
+}
+.resume-drafts {
+  margin-top: 24px;
+}
+.resume-heading,
+.resume-drafts button {
+  color: #263b36;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.resume-heading h2,
+.resume-heading p {
+  margin: 0;
+}
+.resume-drafts ul {
+  display: grid;
+  gap: 8px;
+  max-height: 224px;
+  overflow: auto;
+  padding: 0;
+  margin: 16px 0 0;
+  list-style: none;
+}
+.resume-drafts button {
+  width: 100%;
+  text-align: left;
+  background: #fbfcfa;
+}
+.resume-drafts button strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.resume-drafts button span {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: #24634e;
 }
 .quick-opening label {
   display: grid;
@@ -1110,22 +1238,37 @@ footer,
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  margin: 18px 0;
+  align-items: start;
+  margin: 12px 0 18px;
 }
 .preset-card {
-  padding: 14px;
+  padding: 10px;
   border: 1px solid #d7ded7;
   border-radius: 12px;
   background: #fbfcfa;
 }
 .preset-card.selected {
-  border: 2px solid #24634e;
+  border-color: #24634e;
+  box-shadow: inset 0 0 0 1px #24634e;
   background: #eef6f0;
 }
 .preset-card button {
+  background: transparent;
+  color: #263b36;
+  border: 1px solid transparent;
   width: 100%;
   white-space: normal;
   text-align: left;
+}
+.preset-card button:hover {
+  background: #e7eee0;
+}
+.preset-card button[aria-pressed="true"] {
+  background: #285c4d;
+  color: white;
+}
+.preset-card button[aria-pressed="true"] > span {
+  color: #edf1e6;
 }
 .preset-card strong,
 .preset-card span {
@@ -1134,6 +1277,30 @@ footer,
 .preset-card span,
 .preset-card p {
   font-size: 0.9rem;
+}
+.preset-card button > span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  margin-top: 4px;
+  color: #65766f;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+.preset-details {
+  margin-top: 10px;
+}
+.preset-details > summary {
+  margin-bottom: 0;
+  color: #24634e;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+.preset-example {
+  padding-left: 10px;
+  border-left: 2px solid #cbd6cc;
 }
 .opening-actions {
   display: flex;
@@ -1151,6 +1318,49 @@ footer,
 .advanced summary {
   cursor: pointer;
   font-weight: 600;
+}
+.form-disclosure {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid #d7ded7;
+  border-radius: 10px;
+  background: #fbfcfa;
+}
+.form-disclosure + .form-disclosure {
+  margin-top: 12px;
+}
+.form-disclosure > summary {
+  color: #183b32;
+  cursor: pointer;
+}
+.form-disclosure > summary strong {
+  font-size: 1.1rem;
+}
+.form-disclosure[open] > summary {
+  margin-bottom: 20px;
+}
+.wizard-form > .form-disclosure + fieldset {
+  margin-top: 28px;
+  border-top: 1px solid #d7ded7;
+  padding-top: 24px;
+}
+.disclosure-description {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #65766f;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 .preset-mark {
   color: #24634e;
@@ -1189,6 +1399,14 @@ footer,
   cursor: pointer;
   margin-bottom: 16px;
   font-weight: 600;
+}
+.direction-picker .preset-details > summary {
+  margin-bottom: 0;
+  font-weight: 400;
+}
+.assistant-note {
+  margin-bottom: 0;
+  font-size: 0.85rem;
 }
 .wizard-form legend {
   font-size: 1.4rem;
@@ -1243,8 +1461,9 @@ footer {
   .numbers {
     grid-template-columns: 1fr;
   }
-  .steps button {
-    flex: 1 1 42%;
+  .opening-phases {
+    gap: 16px;
+    font-size: 0.9rem;
   }
 }
 </style>
