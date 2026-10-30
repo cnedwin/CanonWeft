@@ -120,6 +120,7 @@ watch(
         >第 {{ current + 1 }} / {{ rows.length }} 章</span
       >
       <button
+        class="quiet"
         type="button"
         :disabled="unavailable || !previous?.ready"
         :title="
@@ -132,6 +133,7 @@ watch(
         上一章
       </button>
       <button
+        class="quiet"
         type="button"
         :disabled="unavailable || !next?.ready"
         :title="
@@ -143,59 +145,62 @@ watch(
       >
         下一章
       </button>
-      <button type="button" :disabled="loading" @click="refresh">
-        刷新章节顺序
-      </button>
     </div>
     <p v-if="loading" role="status">正在读取规划中的章节顺序…</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-else-if="!loading && current < 0" role="alert">
       当前章已不在最新规划目录，原稿仍保留，请返回规划核对后再跳转。
     </p>
-    <div class="navigation-actions">
-      <label
-        >查找要打开的章节<input
-          v-model="query"
-          type="search"
-          maxlength="200"
-          placeholder="章节标题或编号"
-      /></label>
-      <label
-        >目标章节<select
-          v-model="selected"
-          aria-label="目标章节"
-          :disabled="loading || !!error"
-        >
-          <option value="">请选择章节</option>
-          <option
-            v-for="row in options"
-            :key="row.id"
-            :value="row.id"
-            :disabled="!row.ready || row.id === chapterId"
+    <details class="chapter-picker">
+      <summary>查找并跳转到指定章节</summary>
+      <div class="navigation-actions">
+        <label
+          >查找要打开的章节<input
+            v-model="query"
+            type="search"
+            maxlength="200"
+            placeholder="章节标题或编号"
+        /></label>
+        <label
+          >目标章节<select
+            v-model="selected"
+            aria-label="目标章节"
+            :disabled="loading || !!error"
           >
-            {{ row.title }} · {{ row.id
-            }}{{ row.ready ? "" : " · " + row.reason }}
-          </option>
-        </select></label
-      >
-      <button
-        type="button"
-        :disabled="
-          unavailable ||
-          !selected ||
-          !rows.find((row) => row.id === selected)?.ready ||
-          selected === chapterId
-        "
-        @click="open(selected)"
-      >
-        打开所选章
+            <option value="">请选择章节</option>
+            <option
+              v-for="row in options"
+              :key="row.id"
+              :value="row.id"
+              :disabled="!row.ready || row.id === chapterId"
+            >
+              {{ row.title }} · {{ row.id
+              }}{{ row.ready ? "" : " · " + row.reason }}
+            </option>
+          </select></label
+        >
+        <button
+          type="button"
+          :disabled="
+            unavailable ||
+            !selected ||
+            !rows.find((row) => row.id === selected)?.ready ||
+            selected === chapterId
+          "
+          @click="open(selected)"
+        >
+          打开所选章
+        </button>
+      </div>
+      <p class="muted">
+        找到 {{ matches.length }} 章{{
+          matches.length > 200 ? "，显示前 200 章，请细化关键词" : ""
+        }}。顺序来自当前规划；未就绪章节请先确认细纲。
+      </p>
+      <button class="quiet" type="button" :disabled="loading" @click="refresh">
+        刷新章节顺序
       </button>
-    </div>
-    <p class="muted">
-      找到 {{ matches.length }} 章{{
-        matches.length > 200 ? "，显示前 200 章，请细化关键词" : ""
-      }}。顺序来自当前规划；未就绪章节请先确认细纲。
-    </p>
+    </details>
     <p v-if="blocked" role="status">
       当前章有未保存或待核对的稿件、进行中的操作，或未处理的精修备注。请先处理后再跳转，原输入仍保留。
     </p>
@@ -203,6 +208,23 @@ watch(
 </template>
 
 <style scoped>
+.chapter-navigation {
+  padding: 14px 20px;
+}
+.navigation-actions button {
+  padding: 8px 14px;
+}
+.chapter-picker {
+  margin-top: 12px;
+}
+.chapter-picker summary {
+  cursor: pointer;
+  color: #52665d;
+  font-size: 14px;
+}
+.chapter-picker[open] .navigation-actions {
+  margin-top: 16px;
+}
 .navigation-actions {
   display: flex;
   flex-wrap: wrap;

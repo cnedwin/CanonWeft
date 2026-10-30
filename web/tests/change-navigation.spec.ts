@@ -427,14 +427,20 @@ async function fixture(page: Page, info: TestInfo) {
   };
 }
 async function settings(page: Page) {
-  await page.getByText("本书故事与创作约定", { exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "本书工作区" })
+    .getByRole("button", { name: "故事规划", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "修改小说设置与查看历史", exact: true })
     .click();
   await page.getByRole("button", { name: "查看修改差异", exact: true }).click();
 }
 async function impacts(page: Page) {
-  await page.getByText("全部创作工具", { exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "本书工作区" })
+    .getByRole("button", { name: "人物与资料", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "编辑本书世界与角色", exact: true })
     .click();

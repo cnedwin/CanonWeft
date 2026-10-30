@@ -30,12 +30,22 @@ button:hover {
 }
 button:disabled {
   opacity: 0.5;
-  cursor: wait;
+  cursor: not-allowed;
 }
-button.quiet {
+button.quiet,
+button.secondary {
   background: transparent;
   color: #52665d;
   border: 1px solid #d7ded5;
+}
+button.quiet:hover,
+button.secondary:hover {
+  background: #edf1e6;
+}
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #477b68;
+  outline-offset: 3px;
 }
 input,
 textarea,
@@ -135,7 +145,7 @@ p {
   margin: 0;
 }
 .muted {
-  color: #758177;
+  color: #5d6e63;
   font-size: 14px;
 }
 .panel {
@@ -162,6 +172,8 @@ p {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 28px;
+  gap: 20px;
+  flex-wrap: wrap;
 }
 .layout {
   display: grid;

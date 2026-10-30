@@ -225,7 +225,15 @@ test("一句话与预设直接得到完整可编辑方案，确认前不建书�
     "修钟师找回被抹去的朋友",
   );
   await expect(page.getByLabel("世界背景")).toBeVisible();
+  await page
+    .locator("summary")
+    .filter({ hasText: /初始角色/ })
+    .click();
   await expect(page.getByLabel("姓名或暂名")).toBeVisible();
+  await page
+    .locator("summary")
+    .filter({ hasText: /叙事与篇幅/ })
+    .click();
   await expect(page.getByLabel("目标总字数")).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("editable-plan.png"),
@@ -257,7 +265,7 @@ test("旧五步草稿同页恢复，换预设明确采用范围并保留手改�
     },
   };
   const state = await fixture(page, { initial });
-  await page.getByRole("button", { name: /作者手写书名.*第4步/ }).click();
+  await page.getByRole("button", { name: /作者手写书名.*继续编辑/ }).click();
   await expect(
     page.getByRole("button", { name: "选择预设：玄幻成长" }),
   ).not.toBeVisible();
@@ -265,6 +273,10 @@ test("旧五步草稿同页恢复，换预设明确采用范围并保留手改�
   await expect(page.getByLabel("书名", { exact: true })).toHaveValue(
     "作者手写书名",
   );
+  await page
+    .locator("summary")
+    .filter({ hasText: /叙事与篇幅/ })
+    .click();
   await expect(page.getByLabel("目标总字数")).toBeVisible();
   await page.getByRole("button", { name: "选择预设：玄幻成长" }).click();
   await page.getByRole("button", { name: "获取免费预设方案" }).click();
@@ -285,7 +297,7 @@ test("目录失败仍可自由填写与重试", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "重试加载预设" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "自由填写开书方案" }).click();
+  await page.getByRole("button", { name: "自由填写方案" }).click();
   await page.getByLabel("书名", { exact: true }).fill("自由创作");
   await expect(page.getByLabel("书名", { exact: true })).toHaveValue(
     "自由创作",
@@ -301,7 +313,7 @@ test("预设晚到结果不会覆盖请求期间的手改", async ({ page }) => 
     setup: setup(),
   };
   const state = await fixture(page, { initial });
-  await page.getByRole("button", { name: /旧城钟声.*第2步/ }).click();
+  await page.getByRole("button", { name: /旧城钟声.*继续编辑/ }).click();
   await page.getByText("调整预设方向与想法", { exact: true }).click();
   await page.getByRole("button", { name: "选择预设：都市事业" }).click();
   state.holdPreview();
@@ -332,7 +344,7 @@ test("版本冲突保留文字并可另存副本恢复", async ({ page }) => {
     setup: setup(),
   };
   const state = await fixture(page, { initial });
-  await page.getByRole("button", { name: /旧城钟声.*第5步/ }).click();
+  await page.getByRole("button", { name: /旧城钟声.*继续编辑/ }).click();
   state.conflict();
   await page.getByLabel("书名", { exact: true }).fill("冲突仍要保留");
   await page.getByRole("button", { name: "保存设置草稿", exact: true }).click();
@@ -359,7 +371,7 @@ test("未选预设的一句话在返回书架时也保存为可恢复草稿", as
     return event.defaultPrevented;
   });
   expect(protectedExit).toBe(true);
-  await page.getByRole("button", { name: "保存并返回书架" }).click();
+  await page.getByRole("button", { name: "返回书架", exact: true }).click();
   await expect
     .poll(() => state.saved()?.setup.idea)
     .toBe("书店只在失眠的人面前开门");
@@ -401,7 +413,7 @@ test("确认只授权当前内容，修改取消勾选，失败重试保留同�
     setup: setup(),
   };
   const state = await fixture(page, { initial });
-  await page.getByRole("button", { name: /旧城钟声.*第5步/ }).click();
+  await page.getByRole("button", { name: /旧城钟声.*继续编辑/ }).click();
   await page.getByLabel("我确认采用以上小说设置").check();
   await page.getByLabel("世界背景").fill("旧城与地下钟楼");
   await expect(page.getByLabel("我确认采用以上小说设置")).not.toBeChecked();
@@ -428,7 +440,7 @@ test("恢复旧草稿前先保留尚未采用预设的一句话", async ({ page 
   };
   const state = await fixture(page, { initial });
   await page.getByLabel("一句话创作想法").fill("先别覆盖这句新的灵感");
-  await page.getByRole("button", { name: /旧城钟声.*第3步/ }).click();
+  await page.getByRole("button", { name: /旧城钟声.*继续编辑/ }).click();
   await expect
     .poll(() => state.saved()?.setup.idea)
     .toBe("先别覆盖这句新的灵感");
@@ -448,7 +460,7 @@ test("进入助手等待保存时继续手改会留在原表单，重试才携�
     setup: setup(),
   };
   const state = await fixture(page, { initial });
-  await page.getByRole("button", { name: /旧城钟声.*第5步/ }).click();
+  await page.getByRole("button", { name: /旧城钟声.*继续编辑/ }).click();
   state.holdNextSave();
   await page.getByLabel("书名", { exact: true }).fill("请求前的书名");
   await page

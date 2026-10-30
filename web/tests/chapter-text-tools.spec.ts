@@ -407,6 +407,7 @@ test("章节历史命名留版、原文对照取回与撤销保留当前章信�
 }, info) => {
   const state = await fixture(page, info, original, false, false, true);
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "章节修订历史", exact: true })
       .click();
@@ -458,6 +459,7 @@ test("历史留版回执丢失只读核对，不重发或阻断本页手稿", as
 }, info) => {
   const state = await fixture(page, info, original, false, false, true);
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "章节修订历史", exact: true })
       .click();
@@ -499,6 +501,7 @@ test("章节历史取回确认随手改失效，权限恢复保留手稿和备�
 }, info) => {
   const state = await fixture(page, info, original, false, false, true);
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "章节修订历史", exact: true })
       .click();
@@ -567,6 +570,7 @@ test("章节历史取回确认随手改失效，权限恢复保留手稿和备�
 test("关闭历史时的迟到原文不污染重新打开的当前视图", async ({ page }, info) => {
   const state = await fixture(page, info, original, false, false, true);
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "章节修订历史", exact: true })
       .click();
@@ -859,6 +863,7 @@ test("章节跳转遵从规划顺序，筛选标题且不自动保存或生成",
     await expect(panel).toContainText("第 2 / 4 章");
     await panel.getByRole("button", { name: "上一章", exact: true }).click();
     await panel.getByRole("button", { name: "下一章", exact: true }).click();
+    await panel.getByText("查找并跳转到指定章节", { exact: true }).click();
     await panel.getByLabel("查找要打开的章节", { exact: true }).fill("夜雨");
     await panel.getByLabel("目标章节", { exact: true }).selectOption("a-next");
     await panel
@@ -971,6 +976,7 @@ test("章节跳转目录失败和身份缺失不离开原稿，可原地重试�
       panel.getByRole("button", { name: "下一章", exact: true }),
     ).toBeEnabled();
     state.setChapters({ error: "目录暂不可读" }, 503);
+    await panel.getByText("查找并跳转到指定章节", { exact: true }).click();
     await panel
       .getByRole("button", { name: "刷新章节顺序", exact: true })
       .click();
@@ -1235,6 +1241,7 @@ test("位置与其他章稿字段变化清除旧预览，后续上下文变化�
     await expect(
       panel.getByRole("button", { name: "撤销本次替换", exact: true }),
     ).toBeVisible();
+    await page.getByText("故事位置与知情视角", { exact: false }).click();
     await page.getByLabel("故事位置", { exact: true }).fill("13");
     await expect(
       panel.getByRole("button", { name: "撤销本次替换", exact: true }),
@@ -1520,6 +1527,7 @@ test("留版响应悬挂转为待核对，不取消或重发写请求", async ({
   const state = await fixture(page, info, original, false, false, true);
   try {
     await page.clock.install();
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "章节修订历史", exact: true })
       .click();
@@ -1558,6 +1566,7 @@ test("权限拒绝后迟到留版和核对回执不能复原受保护历史", as
 }, info) => {
   const state = await fixture(page, info, original, false, false, true);
   try {
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "章节修订历史", exact: true })
       .click();

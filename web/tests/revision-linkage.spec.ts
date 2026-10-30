@@ -394,7 +394,10 @@ test("从待复核规划直达对应细纲，保存返回清单并保留筛选�
 }, info) => {
   const state = await fixture(page, info, "workspace");
   try {
-    await page.getByText("全部创作工具", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "人物与资料", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "资料变更与待复核", exact: true })
       .click();
@@ -422,6 +425,7 @@ test("依据对照展示细纲设置与人物变化，确认才更新引用并�
   try {
     const text = page.getByLabel("章节正文", { exact: true });
     await expect(text).toHaveValue(originalText);
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "更新写作依据，保留正文", exact: true })
       .click();
@@ -465,6 +469,7 @@ test("迟到对照不能覆盖手改，上游换版409需重查；只读超时�
     const text = page.getByLabel("章节正文", { exact: true });
     await expect(text).toHaveValue(originalText);
     state.mode("hold");
+    await page.getByText("更多写作工具", { exact: true }).click();
     await page
       .getByRole("button", { name: "更新写作依据，保留正文", exact: true })
       .click();

@@ -190,7 +190,10 @@ test("小说工具提供正文查找，指定重复出现处准确定位，纯�
 }, info) => {
   const f = await fixture(page, info, true);
   try {
-    await page.getByText("全部创作工具", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "审稿与导出", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "全书正文查找", exact: true })
       .click();
@@ -233,7 +236,10 @@ test("小说工具提供正文查找，指定重复出现处准确定位，纯�
 test("多页姓名命中回查返回仍显示所选条目所在页", async ({ page }, info) => {
   const f = await fixture(page, info, true, true);
   try {
-    await page.getByText("全部创作工具", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "审稿与导出", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "全书正文查找", exact: true })
       .click();

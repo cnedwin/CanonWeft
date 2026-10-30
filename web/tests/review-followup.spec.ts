@@ -445,7 +445,10 @@ test("报告在模型设置读取失败时仍可用，引用定位不改文，�
 }, info) => {
   const state = await fixture(page, info, "workspace");
   try {
-    await page.getByText("全部创作工具", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "审稿与导出", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "整卷与全书审稿", exact: true })
       .click();
@@ -579,7 +582,10 @@ test("临时读取故障保留未保存处置备注，当前权限拒绝清除�
 }, info) => {
   const state = await fixture(page, info, "workspace");
   try {
-    await page.getByText("全部创作工具", { exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "本书工作区" })
+      .getByRole("button", { name: "审稿与导出", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "整卷与全书审稿", exact: true })
       .click();
