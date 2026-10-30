@@ -2,6 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
+import { openModelSettingsSection } from "./model-settings-helper";
 
 // Real components and loopback HTTP only; no account, SQL or provider.
 async function fixture(
@@ -141,12 +142,14 @@ test("设置首屏挂起后释放返回并可重试，刷新保留草稿且权�
     await page
       .getByRole("button", { name: "刷新模型配置", exact: true })
       .click();
+    await openModelSettingsSection(page, "预算与账单");
     await page
       .getByRole("button", { name: "重新加载预算", exact: true })
       .click();
     await page
       .getByRole("button", { name: "刷新请求账目", exact: true })
       .click();
+    await openModelSettingsSection(page, "模型与 Key");
     await page
       .getByRole("button", { name: "添加 DeepSeek", exact: true })
       .click();
@@ -154,6 +157,7 @@ test("设置首屏挂起后释放返回并可重试，刷新保留草稿且权�
     await page
       .getByLabel("API Key", { exact: true })
       .fill("test-only-unsaved-key");
+    await openModelSettingsSection(page, "预算与账单");
     await page.getByLabel("累计预算总额", { exact: true }).fill("25");
     state.failModels(503);
     await page
@@ -210,6 +214,7 @@ test("账单历史读取超时可恢复，保存结果未知不按GET时限取�
 }, info) => {
   const state = await fixture(page, info, "history");
   try {
+    await openModelSettingsSection(page, "预算与账单");
     const panel = page.locator(".reconciliation-panel");
     await panel.getByRole("button", { name: /隔离未知请求/ }).click();
     await expect.poll(() => state.counts.hangs).toBe(1);

@@ -271,6 +271,54 @@ const states: Record<string, string> = {
   BLOCKED: "执行前检查未通过",
   CANCELLED: "已取消",
 };
+const taskSearch = ref("");
+const taskStatus = ref("all");
+const resultUnknown = (task: Task) =>
+  task.state === "UNKNOWN" || task.call?.state === "UNKNOWN";
+const visibleTasks = computed(() => {
+  const query = taskSearch.value.trim().toLocaleLowerCase();
+  return tasks.value.filter((task) => {
+    const matchesStatus =
+      taskStatus.value === "all" ||
+      (taskStatus.value === "unknown" && resultUnknown(task)) ||
+      (taskStatus.value === "expired" && !!task.retention) ||
+      (!task.retention &&
+        ((taskStatus.value === "prepared" && task.state === "PREPARED") ||
+          (taskStatus.value === "paused" && task.paused) ||
+          (taskStatus.value === "active" &&
+            !task.paused &&
+            ["QUEUED", "RUNNING"].includes(task.state)) ||
+          (taskStatus.value === "closed" &&
+            [
+              "SUCCEEDED",
+              "INVALID_OUTPUT",
+              "REJECTED",
+              "BLOCKED",
+              "CANCELLED",
+              "RECONCILED",
+            ].includes(task.state))));
+    return (
+      matchesStatus &&
+      (!query ||
+        [
+          task.id,
+          names[task.frozen?.role],
+          task.frozen?.role,
+          task.frozen?.config?.name,
+          task.frozen?.config?.model,
+          states[task.state],
+          task.state,
+        ]
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(query))
+    );
+  });
+});
+function clearTaskFilters() {
+  taskSearch.value = "";
+  taskStatus.value = "all";
+}
 const canEdit = computed(
   () =>
     ["owner", "editor"].includes(props.actor.role) &&
@@ -760,7 +808,7 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <section class="panel generation-panel">
+  <section class="panel generation-panel task-browser">
     <h2>
       {{
         assistance
@@ -876,7 +924,73 @@ onBeforeUnmount(() => {
     <p v-if="!runtimeReady" class="muted">
       持久任务服务未连接，无法开始模型调用。
     </p>
-    <article v-for="task in tasks" :key="task.id" class="generation-task">
+    <div class="section-heading">
+      <h3>已保存的 AI 任务</h3>
+      <button
+        type="button"
+        class="quiet"
+        :disabled="busy || polling"
+        @click="perform(() => refresh())"
+      >
+        刷新AI任务
+      </button>
+    </div>
+    <p class="muted">
+      查看与筛选不会执行请求。已准备的任务仍需明确执行，候选结果仍需核对后采用。
+    </p>
+    <div v-if="attentionCount" class="notice" role="status">
+      <p>
+        已读取的任务中
+        {{ attentionCount }}
+        项结果仍未知；请查看任务结果和账单状态，费用以各项记录为准，不自动重发或释放占用。
+      </p>
+      <button
+        type="button"
+        class="quiet"
+        @click="
+          taskSearch = '';
+          taskStatus = 'unknown';
+        "
+      >
+        筛选未知结果任务
+      </button>
+    </div>
+    <div class="task-toolbar">
+      <label
+        >查找AI任务<input
+          v-model="taskSearch"
+          type="search"
+          placeholder="任务编号、用途、配置或型号"
+      /></label>
+      <label
+        >AI任务状态<select v-model="taskStatus" aria-label="AI任务状态">
+          <option value="all">全部状态</option>
+          <option value="prepared">待执行</option>
+          <option value="active">进行中</option>
+          <option value="unknown">结果未知</option>
+          <option value="paused">已暂停</option>
+          <option value="closed">已结束</option>
+          <option value="expired">已过期</option>
+        </select></label
+      >
+      <button type="button" class="quiet" @click="clearTaskFilters">
+        清除AI任务筛选
+      </button>
+    </div>
+    <p class="muted" role="status">
+      匹配 {{ visibleTasks.length }} / {{ tasks.length }} 项已载入任务
+    </p>
+    <p v-if="!tasks.length" class="empty">
+      尚无已保存的AI任务。填写上方请求可先保存并查看费用估算。
+    </p>
+    <p v-else-if="!visibleTasks.length" class="empty">
+      没有符合筛选的AI任务。已打开的任务详情仍保留在下方。
+    </p>
+    <article
+      v-for="task in visibleTasks"
+      :key="task.id"
+      class="generation-task"
+    >
       <template v-if="task.retention">
         <strong>已过期的任务 {{ task.id.slice(0, 6) }}</strong>
         <p>运行材料已到保留期限，不能继续执行。已记录费用和未知占用仍保留。</p>
@@ -890,10 +1004,19 @@ onBeforeUnmount(() => {
           {{ task.frozen.config.name }}</strong
         >
         <p>
-          {{ task.paused ? "已暂停" : (states[task.state] ?? task.state) }} ·
-          配置版本 {{ task.frozen.config.revision }} · 预留估算
+          {{
+            task.paused
+              ? "已暂停"
+              : task.state === "UNKNOWN" && task.call?.state === "RECONCILED"
+                ? "生成结果仍未知；费用已核对"
+                : (states[task.state] ?? task.state)
+          }}
+          · 配置版本 {{ task.frozen.config.revision }} · 预留估算
           {{ money(task.frozen.estimate_micros) }}
           {{ task.frozen.price.currency }}
+        </p>
+        <p v-if="task.call?.state === 'UNKNOWN'" class="notice">
+          此请求结果未知，费用占用保留；先查看任务详情与账单，取消不代表未收费。
         </p>
         <div class="actions">
           <button class="quiet" :disabled="busy" @click="inspect(task)">

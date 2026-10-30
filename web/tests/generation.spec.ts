@@ -1,6 +1,7 @@
 import { loginAsOwner } from "./owner-session";
 import { openIPSection, saveReasonedCandidate } from "./ip-edit-helper";
 import { test, expect } from "@playwright/test";
+import { openModelSettingsSection } from "./model-settings-helper";
 
 test("价格版本与生成估算可保存，付费关闭时执行被拒绝", async ({ page }) => {
   await loginAsOwner(page);
@@ -14,6 +15,7 @@ test("价格版本与生成估算可保存，付费关闭时执行被拒绝", as
     .getByLabel("API Key", { exact: true })
     .fill("test-only-browser-key-not-real");
   await page.getByRole("button", { name: "保存模型配置", exact: true }).click();
+  await openModelSettingsSection(page, "专业用途");
   await page
     .getByLabel("使用的模型", { exact: true })
     .selectOption({ label: `${config} · deepseek-flash` });
@@ -22,11 +24,13 @@ test("价格版本与生成估算可保存，付费关闭时执行被拒绝", as
     .getByLabel("专业用途", { exact: false })
     .selectOption("continuity_editor");
   await page.getByRole("button", { name: "保存用途绑定" }).click();
+  await openModelSettingsSection(page, "预算与账单");
   await page.getByLabel("允许预算范围内的付费调用").uncheck();
   await page.getByRole("button", { name: "保存预算设置" }).click();
   await expect(
     page.getByText("预算已保存，付费调用保持关闭。", { exact: true }),
   ).toBeVisible();
+  await openModelSettingsSection(page, "模型价格");
   await page
     .getByLabel("价格对应配置")
     .selectOption({ label: `${config} · deepseek-flash · 版本 1` });

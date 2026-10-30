@@ -2,6 +2,7 @@ import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
+import { openModelSettingsSection } from "./model-settings-helper";
 
 test("未知请求可凭账单解除占用并保留修正历史", async ({ page }) => {
   const fixture = JSON.parse(
@@ -17,6 +18,7 @@ test("未知请求可凭账单解除占用并保留修正历史", async ({ page 
   ) as { id: string; project: string; currency: string };
   await loginAsOwner(page);
   await page.getByRole("button", { name: "模型与用途设置" }).click();
+  await openModelSettingsSection(page, "预算与账单");
   const panel = page.locator(".reconciliation-panel");
   await panel
     .getByRole("button", { name: new RegExp(fixture.project) })
@@ -33,6 +35,7 @@ test("未知请求可凭账单解除占用并保留修正历史", async ({ page 
   await panel.getByLabel("我已核对账单与此请求的对应关系").check();
   await panel.getByRole("button", { name: "确认保存账单记录" }).click();
   await expect(panel.getByRole("status")).toContainText("账单记录已保存");
+  await panel.locator(".adjustment-history > summary").click();
   await expect(panel.locator(".adjustment")).toHaveCount(1);
   await expect(panel.locator(".adjustment")).toContainText("测试账单-001");
   await expect(
@@ -40,12 +43,14 @@ test("未知请求可凭账单解除占用并保留修正历史", async ({ page 
   ).toBeEnabled();
   await page.reload();
   await page.getByRole("button", { name: "模型与用途设置" }).click();
+  await openModelSettingsSection(page, "预算与账单");
   await panel
     .getByRole("button", { name: new RegExp(fixture.project) })
     .click();
   await expect(panel.getByLabel("账单累计金额", { exact: true })).toHaveValue(
     "0.000045",
   );
+  await panel.locator(".adjustment-history > summary").click();
   await expect(panel.locator(".adjustment")).toHaveCount(1);
   await expect(page.getByLabel("允许预算范围内的付费调用")).not.toBeChecked();
   await page.screenshot({
@@ -105,21 +110,23 @@ test("到期账务说明展示保留证明，未知回执不显示为零收费",
   );
   await loginAsOwner(page);
   await page.getByRole("button", { name: "模型与用途设置" }).click();
+  await openModelSettingsSection(page, "预算与账单");
   const panel = page.locator(".reconciliation-panel");
   await panel
     .getByRole("button", { name: new RegExp(fixture.project) })
     .click();
+  await panel.locator(".adjustment-history > summary").click();
   await expect(panel.locator(".adjustment")).toContainText("已保留费用证明");
   await expect(panel.locator(".adjustment")).toContainText("0.000037");
   await expect(panel.locator(".adjustment")).toContainText(
     "原始账单说明已到保留期限",
   );
   await expect(panel.locator(".adjustment blockquote")).toHaveCount(0);
-  await panel.locator("summary").click();
-  await expect(panel.locator("details")).toContainText(
+  await panel.locator(".receipt-history > summary").click();
+  await expect(panel.locator(".receipt-history")).toContainText(
     "没有确切用量，不能按零收费判断",
   );
-  await expect(panel.locator("details")).toContainText(
+  await expect(panel.locator(".receipt-history")).toContainText(
     "原始回执已到保留期限，费用证明仍保留",
   );
   await page.screenshot({

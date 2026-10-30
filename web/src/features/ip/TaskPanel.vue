@@ -61,6 +61,41 @@ const names: Record<string, string> = {
   BLOCKED: "需要处理",
   COMPLETED: "已完成",
 };
+const search = ref("");
+const statusFilter = ref("all");
+const needsAttention = (task: Task) =>
+  ["WAITING_ADOPTION", "WAITING_PUBLICATION", "BLOCKED", "STALE"].includes(
+    task.state,
+  );
+const attentionCount = computed(
+  () => tasks.value.filter(needsAttention).length,
+);
+const visibleTasks = computed(() => {
+  const query = search.value.trim().toLocaleLowerCase();
+  return tasks.value.filter((task) => {
+    const matchesStatus =
+      statusFilter.value === "all" ||
+      (statusFilter.value === "attention" && needsAttention(task)) ||
+      (statusFilter.value === "paused" && task.paused) ||
+      (statusFilter.value === "active" &&
+        !task.paused &&
+        !["COMPLETED", "CANCELLED", "STALE"].includes(task.state)) ||
+      (statusFilter.value === "closed" &&
+        ["COMPLETED", "CANCELLED"].includes(task.state));
+    return (
+      matchesStatus &&
+      (!query ||
+        [task.id, task.candidate_id, task.reason, names[task.state], task.state]
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(query))
+    );
+  });
+});
+function clearFilters() {
+  search.value = "";
+  statusFilter.value = "all";
+}
 function fail(e: unknown) {
   error.value = message(e);
   if (e instanceof APIError && e.status === 401) emit("expired");
@@ -123,8 +158,21 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <section class="panel">
-    <h2>持久任务</h2>
+  <section class="panel task-browser" aria-label="设定检查任务">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">设定候选 / 流程进度</p>
+        <h2>持久任务</h2>
+      </div>
+      <button
+        type="button"
+        class="quiet"
+        :disabled="busy || refreshing"
+        @click="refresh"
+      >
+        刷新持久任务
+      </button>
+    </div>
     <p class="muted">
       对固定的设定候选进行确定性检查，等待你采用和发布。暂停、重启后仍保留流程；这不替代独立的语义审查，也不会自动付费。
     </p>
@@ -132,6 +180,7 @@ onUnmounted(() => {
       持久任务服务尚未连接，暂不能启动新任务。
     </p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
+    <p class="muted">启动检查 → 查看进度 → 在原设定流程中采用与发布。</p>
     <form v-if="canEdit" @submit.prevent="start">
       <fieldset :disabled="busy || blocked || !runtimeReady">
         <label
@@ -154,14 +203,44 @@ onUnmounted(() => {
         </button>
       </fieldset>
     </form>
+    <div class="task-toolbar">
+      <label
+        >查找持久任务<input
+          v-model="search"
+          type="search"
+          placeholder="任务编号、候选编号或原因"
+      /></label>
+      <label
+        >持久任务状态<select v-model="statusFilter" aria-label="持久任务状态">
+          <option value="all">全部状态</option>
+          <option value="attention">需要处理</option>
+          <option value="active">进行中</option>
+          <option value="paused">已暂停</option>
+          <option value="closed">已结束</option>
+        </select></label
+      >
+      <button type="button" class="quiet" @click="clearFilters">
+        清除持久任务筛选
+      </button>
+    </div>
+    <p role="status" class="muted">
+      匹配 {{ visibleTasks.length }} / {{ tasks.length }} 项已载入任务 ·
+      {{ attentionCount }} 项需要处理
+    </p>
     <p v-if="!tasks.length" class="empty">当前分支还没有持久任务。</p>
+    <p v-else-if="!visibleTasks.length" class="empty">
+      没有符合筛选的持久任务。可清除筛选查看已载入记录。
+    </p>
     <article
-      v-for="t in tasks"
+      v-for="t in visibleTasks"
       :key="t.id"
       class="candidate-card"
       data-testid="task-card"
     >
       <h3>{{ names[t.state] ?? t.state }}</h3>
+      <p class="muted">
+        任务 {{ t.id.slice(0, 8) }} · 候选 {{ t.candidate_id.slice(0, 8) }}
+      </p>
       <p>{{ t.reason }}</p>
       <details>
         <summary>查看固定版本</summary>
@@ -172,13 +251,22 @@ onUnmounted(() => {
         class="actions"
       >
         <button
+          class="quiet"
           :disabled="busy || blocked"
           @click="control(t, t.paused ? 'resume' : 'pause')"
         >
           {{ t.paused ? "恢复任务" : "暂停任务" }}</button
-        ><button :disabled="busy || blocked" @click="control(t, 'refresh')">
+        ><button
+          class="quiet"
+          :disabled="busy || blocked"
+          @click="control(t, 'refresh')"
+        >
           重新检查进度</button
-        ><button :disabled="busy || blocked" @click="control(t, 'cancel')">
+        ><button
+          class="quiet"
+          :disabled="busy || blocked"
+          @click="control(t, 'cancel')"
+        >
           取消任务
         </button>
       </div>

@@ -20,6 +20,9 @@ const core = computed(() =>
 const others = computed(() =>
   props.report.roles.filter((row) => !coreRoles.includes(row.role)),
 );
+const configuredCore = computed(
+  () => core.value.filter((row) => row.code === "CONFIGURED").length,
+);
 function timeLabel(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "时间无法识别" : date.toLocaleString();
@@ -36,7 +39,15 @@ function connectionName(id?: string) {
 
 <template>
   <section class="panel setup-checklist" aria-labelledby="model-setup-heading">
-    <h2 id="model-setup-heading">开写前配置检查</h2>
+    <header class="section-heading">
+      <div>
+        <p class="eyebrow">已保存配置的只读检查</p>
+        <h2 id="model-setup-heading">开写前配置检查</h2>
+      </div>
+      <span v-if="report.available && core.length" class="pill">
+        常用用途 {{ configuredCore }} / {{ core.length }} 项配置完整
+      </span>
+    </header>
     <p class="muted">
       这是已保存配置的只读快照，不会调用模型。检查时间：{{
         timeLabel(report.checked_at)
@@ -50,10 +61,10 @@ function connectionName(id?: string) {
       }}{{ report.budget.enabled ? "预算开关已开启。" : "付费调用已关闭。" }}
     </p>
     <p v-if="!report.available" role="status">
-      配置检查暂不可用；下方设置仍可编辑，请稍后刷新模型配置。
+      配置检查暂不可用；其他分区仍可编辑，请稍后刷新模型配置。
     </p>
     <template v-else>
-      <div class="setup-budget">
+      <div class="setup-budget author-status">
         <p v-if="!report.budget.configured">
           预算尚未完整设置，请核对币种、累计总额和单次上限。
         </p>
@@ -65,7 +76,7 @@ function connectionName(id?: string) {
             report.budget.available_micros === 0 ? " · 可用预算为零" : ""
           }}。可用金额已扣除记账与请求占用，结果未知的请求仍保留占用。
         </p>
-        <button type="button" @click="emit('locate', 'budget')">
+        <button type="button" class="quiet" @click="emit('locate', 'budget')">
           查看预算设置
         </button>
       </div>
@@ -90,6 +101,7 @@ function connectionName(id?: string) {
           <button
             v-if="setupExplanation(row.code).target"
             type="button"
+            class="quiet"
             :aria-label="`${names[row.role] ?? row.role}：去设置`"
             @click="emit('locate', setupExplanation(row.code).target!)"
           >
@@ -116,6 +128,7 @@ function connectionName(id?: string) {
             <button
               v-if="setupExplanation(row.code).target"
               type="button"
+              class="quiet"
               :aria-label="`${names[row.role] ?? row.role}：去设置`"
               @click="emit('locate', setupExplanation(row.code).target!)"
             >
@@ -125,21 +138,32 @@ function connectionName(id?: string) {
         </ul>
       </details>
     </template>
-    <p class="muted">
-      Key
-      仅核对保存记录，不读取或展示密钥，不验证账户额度、网络可达性或生成质量。固定旧版可继续使用的前提包括
-      Key
-      未变且当前配置未停用；需要更新模型或价格时可在下方核对并重新绑定。更改价格或预算后请点击“刷新模型配置”更新清单。实际生成仍执行原有权限、规划、资格和费用检查。
-    </p>
+    <details class="setup-scope">
+      <summary>检查范围与版本说明</summary>
+      <p class="muted">
+        Key
+        仅核对保存记录，不读取或展示密钥，不验证账户额度、网络可达性或生成质量。固定旧版可继续使用的前提包括
+        Key
+        未变且当前配置未停用；需要更新模型或价格时可在对应分区核对并重新绑定。更改价格或预算后请点击“刷新模型配置”更新清单。实际生成仍执行原有权限、规划、资格和费用检查。
+      </p>
+    </details>
   </section>
 </template>
 
 <style scoped>
 .setup-roles {
-  padding-left: 1.2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
 }
 .setup-roles li {
-  margin: 0.75rem 0;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid #d4ded7;
+  border-radius: 12px;
+  background: #fafcf9;
   line-height: 1.7;
 }
 .setup-roles button {
@@ -147,6 +171,9 @@ function connectionName(id?: string) {
 }
 .setup-budget {
   margin-bottom: 1rem;
+}
+.setup-scope {
+  margin-top: 1rem;
 }
 summary {
   cursor: pointer;
