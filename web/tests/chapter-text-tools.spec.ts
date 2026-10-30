@@ -90,6 +90,16 @@ async function fixture(
   let chaptersStatus = 200;
   let holdSave = false;
   let lostSave: "before" | "after" | null = null;
+  const historyRoot = `/api/novels/${bookId}/chapters/${controlId}/history`;
+  const history: Record<string, unknown>[] = [];
+  const historyReasons: string[] = [];
+  let historyStatus = 200,
+    holdHistory = false,
+    loseCheckpoint = false;
+  let holdCheckpoint = false,
+    holdOperation = false,
+    checkpointReplies = 0,
+    operationHolds = 0;
   const waiting: (() => void)[] = [];
   const server = createServer(async (request, response) => {
     const url = new URL(request.url!, "http://127.0.0.1");
@@ -99,6 +109,72 @@ async function fixture(
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(value));
     };
+    if (path === historyRoot || path.startsWith(historyRoot + "/")) {
+      if (historyStatus !== 200)
+        return json({ error: "章节修订权限已撤销" }, historyStatus);
+      if (request.method === "POST") {
+        let raw = "";
+        for await (const part of request) raw += part;
+        const input = JSON.parse(raw);
+        if (input.revision !== draft.revision || input.hash !== draft.hash)
+          return json({ error: "章稿已变化" }, 409);
+        const item = {
+          id: hash(input.operation_id).slice(0, 32),
+          chapter_id: chapterId,
+          source_revision: draft.revision,
+          source_hash: draft.hash,
+          source_base_head: draft.base_head,
+          text_hash: hash(draft.document.text),
+          title: draft.document.title,
+          characters: Array.from(draft.document.text).length,
+          kind: "manual",
+          note: input.note,
+          created_at: new Date().toISOString(),
+          operation_id: input.operation_id,
+          text: draft.document.text,
+        };
+        history.unshift(item);
+        if (holdCheckpoint) {
+          holdCheckpoint = false;
+          await new Promise<void>((resolve) => waiting.push(resolve));
+        }
+        checkpointReplies++;
+        if (loseCheckpoint) {
+          loseCheckpoint = false;
+          response.writeHead(201, { "Content-Type": "application/json" });
+          return response.end("{");
+        }
+        return json(item, 201);
+      }
+      const id = path.slice(historyRoot.length + 1);
+      const item = history.find((value) => value.id === id);
+      const result = id
+        ? item
+        : {
+            items: history
+              .filter(
+                (v) =>
+                  !url.searchParams.has("operation_id") ||
+                  v.operation_id === url.searchParams.get("operation_id"),
+              )
+              .map((item) => {
+                const meta = { ...item };
+                delete meta.text;
+                return meta;
+              }),
+            next: "",
+          };
+      if (holdHistory && id) {
+        holdHistory = false;
+        await new Promise<void>((resolve) => waiting.push(resolve));
+      }
+      if (holdOperation && url.searchParams.has("operation_id")) {
+        holdOperation = false;
+        operationHolds++;
+        await new Promise<void>((resolve) => waiting.push(resolve));
+      }
+      return json(result ?? { error: "版本不存在" }, result ? 200 : 404);
+    }
     if (path === `/api/novels/${bookId}/chapter-references`) {
       if (holdDirectory) {
         holdDirectory = false;
@@ -166,6 +242,7 @@ async function fixture(
         let body = "";
         for await (const chunk of request) body += chunk;
         const value = JSON.parse(body);
+        historyReasons.push(value.history_reason ?? "");
         writes.push(structuredClone(value.document));
         if (lostSave === "before") {
           lostSave = null;
@@ -254,6 +331,25 @@ async function fixture(
   return {
     writes,
     calls,
+    history,
+    historyReasons,
+    historyStatus: (status: number) => {
+      historyStatus = status;
+    },
+    holdHistory: () => {
+      holdHistory = true;
+    },
+    loseCheckpoint: () => {
+      loseCheckpoint = true;
+    },
+    holdCheckpoint: () => {
+      holdCheckpoint = true;
+    },
+    holdOperation: () => {
+      holdOperation = true;
+    },
+    checkpointReplies: () => checkpointReplies,
+    operationHolds: () => operationHolds,
     original: structuredClone(document),
     previousId,
     nextId,
@@ -305,6 +401,214 @@ async function tools(page: Page) {
     .click();
   return page.getByRole("region", { name: "章内查找与替换", exact: true });
 }
+
+test("章节历史命名留版、原文对照取回与撤销保留当前章信息", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "章节修订历史",
+      exact: true,
+    });
+    await panel
+      .getByLabel("版本备注", { exact: true })
+      .fill("第一版，保留原始换行");
+    await panel
+      .getByRole("button", { name: "保存当前版本", exact: true })
+      .click();
+    await expect(
+      panel.getByLabel("历史版本", { exact: true }).locator("option").last(),
+    ).toContainText("第一版，保留原始换行");
+    expect(state.history).toHaveLength(1);
+    const manuscript = page.getByLabel("章节正文", { exact: true });
+    await manuscript.fill("作者继续修改后的新正文。");
+    await expect.poll(() => state.writes.length).toBe(1);
+    await panel
+      .getByRole("button", { name: "读取所选版本", exact: true })
+      .click();
+    await expect(
+      panel.getByRole("region", { name: "正文差异对照" }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: info.outputPath("history-desktop.png"),
+      fullPage: true,
+    });
+    await panel.getByRole("checkbox", { name: /我确认用历史正文/ }).check();
+    await panel
+      .getByRole("button", { name: "取回这版正文", exact: true })
+      .click();
+    await expect.poll(() => state.writes.length).toBe(2);
+    expect(state.writes[1]).toEqual(state.original);
+    expect(state.historyReasons[1]).toBe("before_restore");
+    await panel
+      .getByRole("button", { name: "撤销这次旧稿取回", exact: true })
+      .click();
+    await expect(manuscript).toHaveValue("作者继续修改后的新正文。");
+  } finally {
+    await state.close();
+  }
+});
+
+test("历史留版回执丢失只读核对，不重发或阻断本页手稿", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "章节修订历史",
+      exact: true,
+    });
+    state.loseCheckpoint();
+    await panel.getByLabel("版本备注", { exact: true }).fill("回执未知");
+    await panel
+      .getByRole("button", { name: "保存当前版本", exact: true })
+      .click();
+    await expect(
+      panel.getByRole("button", { name: "核对留版结果", exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole("button", { name: "关闭修订历史", exact: true }),
+    ).toBeDisabled();
+    await panel
+      .getByRole("button", { name: "核对留版结果", exact: true })
+      .click();
+    await expect(panel.getByText("版本已留存", { exact: false })).toBeVisible();
+    expect(state.history).toHaveLength(1);
+    expect(
+      state.calls.filter(
+        (v) => v.path.endsWith("/history") && v.method === "POST",
+      ),
+    ).toHaveLength(1);
+    await expect(page.getByLabel("章节正文", { exact: true })).toHaveValue(
+      original,
+    );
+  } finally {
+    await state.close();
+  }
+});
+
+test("章节历史取回确认随手改失效，权限恢复保留手稿和备注", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "章节修订历史",
+      exact: true,
+    });
+    await panel
+      .getByRole("button", { name: "保存当前版本", exact: true })
+      .click();
+    await expect.poll(() => state.history.length).toBe(1);
+    const manuscript = page.getByLabel("章节正文", { exact: true });
+    await manuscript.fill("作者新正文。");
+    await expect.poll(() => state.writes.length).toBe(1);
+    await panel
+      .getByRole("button", { name: "读取所选版本", exact: true })
+      .click();
+    await panel.getByRole("checkbox", { name: /我确认用历史正文/ }).check();
+    await manuscript.fill("作者又修改正文。");
+    await expect(
+      panel.getByRole("button", { name: "取回这版正文", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      panel.getByRole("checkbox", { name: /我确认用历史正文/ }),
+    ).not.toBeChecked();
+    await panel
+      .getByLabel("版本备注", { exact: true })
+      .fill("尚未提交的版本备注");
+    state.historyStatus(403);
+    await panel
+      .getByRole("button", { name: "刷新修订历史", exact: true })
+      .click();
+    await expect(panel.getByRole("alert")).toContainText("权限");
+    await expect(
+      panel.getByRole("region", { name: "正文差异对照" }),
+    ).toHaveCount(0);
+    await expect(manuscript).toHaveValue("作者又修改正文。");
+    await expect(panel.getByLabel("版本备注", { exact: true })).toHaveValue(
+      "尚未提交的版本备注",
+    );
+    state.historyStatus(200);
+    await panel
+      .getByRole("button", { name: "刷新修订历史", exact: true })
+      .click();
+    await expect(
+      panel.getByLabel("历史版本", { exact: true }).locator("option"),
+    ).toHaveCount(2);
+    await panel
+      .getByRole("button", { name: "读取所选版本", exact: true })
+      .click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath("history-mobile.png"),
+      fullPage: true,
+    });
+  } finally {
+    await state.close();
+  }
+});
+
+test("关闭历史时的迟到原文不污染重新打开的当前视图", async ({ page }, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "章节修订历史",
+      exact: true,
+    });
+    await panel
+      .getByRole("button", { name: "保存当前版本", exact: true })
+      .click();
+    await expect.poll(() => state.history.length).toBe(1);
+    state.holdHistory();
+    await panel
+      .getByRole("button", { name: "读取所选版本", exact: true })
+      .click();
+    await expect(
+      panel.getByRole("button", { name: "正在读取…", exact: true }),
+    ).toBeVisible();
+    await panel
+      .getByRole("button", { name: "关闭修订历史", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    await panel
+      .getByLabel("版本备注", { exact: true })
+      .fill("新视图保留的备注");
+    state.release();
+    await expect(
+      panel.getByRole("region", { name: "正文差异对照" }),
+    ).toHaveCount(0);
+    await expect(panel.getByLabel("版本备注", { exact: true })).toHaveValue(
+      "新视图保留的备注",
+    );
+    await expect(page.getByLabel("章节正文", { exact: true })).toHaveValue(
+      original,
+    );
+    expect(state.writes).toHaveLength(0);
+  } finally {
+    await state.close();
+  }
+});
 
 test("跨章参照保持本章编辑，精确CRLF选段经重核后带入原精修输入", async ({
   page,
@@ -1210,4 +1514,103 @@ test("换行选区双向映射及保存核对仅接受确切下一版或原基�
       resource: { ...remote.resource, id: "other" },
     }),
   ).toBe("diverged");
+});
+
+test("留版响应悬挂转为待核对，不取消或重发写请求", async ({ page }, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page.clock.install();
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "章节修订历史",
+      exact: true,
+    });
+    state.holdCheckpoint();
+    await panel
+      .getByRole("button", { name: "保存当前版本", exact: true })
+      .click();
+    await expect.poll(() => state.history.length).toBe(1);
+    await page.clock.runFor(15010);
+    await expect(
+      panel.getByRole("button", { name: "核对留版结果", exact: true }),
+    ).toBeEnabled();
+    await panel
+      .getByRole("button", { name: "核对留版结果", exact: true })
+      .click();
+    await expect(panel.getByText("版本已留存", { exact: false })).toBeVisible();
+    expect(
+      state.calls.filter(
+        (v) => v.path.endsWith("/history") && v.method === "POST",
+      ),
+    ).toHaveLength(1);
+    expect(state.checkpointReplies()).toBe(0);
+    state.release();
+    await expect.poll(() => state.checkpointReplies()).toBe(1);
+  } finally {
+    await state.close();
+  }
+});
+
+test("权限拒绝后迟到留版和核对回执不能复原受保护历史", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page
+      .getByRole("button", { name: "章节修订历史", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "章节修订历史",
+      exact: true,
+    });
+    const note = panel.getByLabel("版本备注", { exact: true });
+    for (const mode of ["write", "read"]) {
+      await note.fill("权限撤销前尚未确认的备注");
+      if (mode === "write") state.holdCheckpoint();
+      else state.loseCheckpoint();
+      await panel
+        .getByRole("button", { name: "保存当前版本", exact: true })
+        .click();
+      await expect
+        .poll(() => state.history.length)
+        .toBe(mode === "write" ? 1 : 2);
+      if (mode === "read") {
+        state.holdOperation();
+        await panel
+          .getByRole("button", { name: "核对留版结果", exact: true })
+          .click();
+        await expect.poll(() => state.operationHolds()).toBe(1);
+      }
+      state.historyStatus(403);
+      await panel
+        .getByRole("button", { name: "刷新修订历史", exact: true })
+        .click();
+      await expect(panel.getByRole("alert")).toContainText("权限");
+      state.historyStatus(200);
+      state.release();
+      await expect
+        .poll(() => state.checkpointReplies())
+        .toBe(mode === "write" ? 1 : 2);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await expect(note).toHaveValue("权限撤销前尚未确认的备注");
+      await expect(
+        panel.getByLabel("历史版本", { exact: true }).locator("option"),
+      ).toHaveCount(1);
+      await panel
+        .getByRole("button", { name: "核对留版结果", exact: true })
+        .click();
+      await expect(
+        panel.getByText("版本已留存", { exact: false }),
+      ).toBeVisible();
+    }
+  } finally {
+    await state.close();
+  }
 });

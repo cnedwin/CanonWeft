@@ -336,7 +336,7 @@ func auditOwnerTable(action string) string {
 		"model_connections": {"model.configure", "model.bind.architect", "model.bind.planner", "model.bind.writer", "model.bind.bookkeeper", "model.bind.critic", "model.bind.researcher", "model.bind.character_designer", "model.bind.continuity_editor", "model.bind.style_editor", "model.bind.asset_designer", "model.bind.image_generator", "model.bind.import_reader"},
 		"model_prices":      {"model.price"}, "model_calls": {"model.cancel"}, "model_reconciliations": {"model.reconcile"},
 		"projects": {"project.create", "project.rename", "project.delete", "project.recover", "project.membership"}, "branches": {"branch.create", "knowledge.index", "knowledge.private_index"},
-		"ip_revisions": {"ip.propose", "ip.adopt", "ip.publish"}, "artifact_releases": {"release.prepare", "release.adopt", "release.publish", "release.joint-publish"}, "resources": {"resource.create", "character.design.apply", "name.catalog.save"},
+		"ip_revisions": {"ip.propose", "ip.adopt", "ip.publish"}, "artifact_releases": {"release.prepare", "release.adopt", "release.publish", "release.joint-publish"}, "resources": {"resource.create", "character.design.apply", "name.catalog.save", "novel.chapter.checkpoint"},
 		"capability_versions": {"capability.candidate", "capability.revoke"}, "change_plans": {"change.plan"},
 		"generation_tasks": {"generation.prepare", "generation.start", "generation.pause", "generation.resume", "generation.cancel"},
 		"source_imports":   {"source.import"}, "ingest_jobs": {"source.ingest", "source.ingest.pause", "source.ingest.resume", "source.ingest.cancel"},

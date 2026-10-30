@@ -13,14 +13,15 @@ import (
 
 type NovelChapters struct{ IP *IP }
 type NovelChapterDraft struct {
-	Resource domain.Resource       `json:"resource"`
-	Revision int64                 `json:"revision"`
-	BaseHead string                `json:"base_head"`
-	Hash     string                `json:"hash"`
-	Document novel.ChapterDocument `json:"document"`
-	Ready    bool                  `json:"ready"`
-	Reason   string                `json:"reason"`
-	Notes    []string              `json:"notes,omitempty"`
+	HistoryReason string                `json:"history_reason,omitempty"`
+	Resource      domain.Resource       `json:"resource"`
+	Revision      int64                 `json:"revision"`
+	BaseHead      string                `json:"base_head"`
+	Hash          string                `json:"hash"`
+	Document      novel.ChapterDocument `json:"document"`
+	Ready         bool                  `json:"ready"`
+	Reason        string                `json:"reason"`
+	Notes         []string              `json:"notes,omitempty"`
 }
 
 func chapterName(kind, id string) string { return kind + " · " + id }
@@ -231,6 +232,9 @@ func (s *NovelChapters) Read(ctx context.Context, actor, bookID, id string) (Nov
 }
 
 func (s *NovelChapters) Save(ctx context.Context, actor, bookID, id string, in NovelChapterDraft) (NovelChapterDraft, error) {
+	if in.HistoryReason != "" && in.HistoryReason != "before_restore" && in.HistoryReason != "before_replace" {
+		return in, domain.ErrValidation
+	}
 	if err := in.Document.Validate(); err != nil {
 		return in, err
 	}
@@ -284,12 +288,13 @@ func (s *NovelChapters) Save(ctx context.Context, actor, bookID, id string, in N
 	}
 	tx.Rollback()
 	raw, _ := json.Marshal(in.Document)
-	draft, err := s.IP.SaveResourceDraft(ctx, a, book.ProjectID, id, ResourceDraft{Revision: in.Revision, BaseHead: in.BaseHead, Text: string(raw), Policy: &domain.KnowledgePolicy{Space: "working", Visibility: "author"}})
+	draft, err := s.IP.SaveResourceDraft(ctx, a, book.ProjectID, id, ResourceDraft{Revision: in.Revision, BaseHead: in.BaseHead, Text: string(raw), Policy: &domain.KnowledgePolicy{Space: "working", Visibility: "author"}, historyReason: in.HistoryReason, historySource: &chapterHistorySource{old.Document, old.Revision, old.Hash, old.BaseHead}})
 	if err != nil {
 		return in, err
 	}
 	in.Revision = draft.Revision
 	in.Hash = digest(string(raw))
+	in.HistoryReason = ""
 	in.Resource = old.Resource
 	return in, nil
 }
