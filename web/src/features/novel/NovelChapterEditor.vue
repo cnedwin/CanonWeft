@@ -20,6 +20,7 @@ import NovelInlineRefinement from "./NovelInlineRefinement.vue";
 import NovelWritingCard from "./NovelWritingCard.vue";
 import NovelChapterTextTools from "./NovelChapterTextTools.vue";
 import NovelChapterNavigation from "./NovelChapterNavigation.vue";
+import NovelChapterReference from "./NovelChapterReference.vue";
 import {
   chapterTextareaSelection,
   chapterSourceSelection,
@@ -260,12 +261,42 @@ const unconfirmedSave = ref<ChapterSaveAttempt | null>(null);
 let saveSequence = 0;
 const focusMode = ref(false);
 const textToolsOpen = ref(false);
+const referenceOpen = ref(false);
 const manualEditContext = computed(() => {
   if (!draft.value) return "";
   const { text: manuscript, ...context } = draft.value.document;
   void manuscript;
   return JSON.stringify([props.book.id, draft.value.resource.id, context]);
 });
+function toggleReference() {
+  if (busy.value || assistant.value || ledgerOpen.value) return;
+  focusMode.value = false;
+  referenceOpen.value = !referenceOpen.value;
+}
+function addReferenceInstruction(value: {
+  context: string;
+  instruction: string;
+}) {
+  if (
+    locked.value ||
+    assistant.value ||
+    unconfirmedSave.value ||
+    value.context !== manualEditContext.value
+  )
+    return;
+  if (!refinementEditor.value?.addInstruction(value.instruction)) {
+    notice.value =
+      "精修要求容量不足或当前不可编辑，请先整理；原输入和参考选段保持原样。";
+    return;
+  }
+  focusMode.value = false;
+  notice.value =
+    "跨章选段已加入作者精修要求，正文、账本与记忆保持原样；尚未生成任何内容。";
+  refinementRegion.value?.scrollIntoView({
+    block: "center",
+    behavior: "smooth",
+  });
+}
 const canEdit = computed(
   () =>
     ["owner", "editor"].includes(props.actor.role) &&
@@ -1115,6 +1146,14 @@ onBeforeUnmount(() => {
         >
           对照与取回旧稿
         </button>
+        <button
+          class="focus-keep"
+          :disabled="busy || assistant || ledgerOpen"
+          :aria-expanded="referenceOpen"
+          @click="toggleReference"
+        >
+          跨章原文参照
+        </button>
         <button class="focus-keep" @click="download">下载当前私人稿</button>
         <button v-if="assistant" :disabled="busy" @click="closeAssistant">
           返回手动写作
@@ -1195,51 +1234,69 @@ onBeforeUnmount(() => {
         @locate="locateReviewQuote"
         @close="textToolsOpen = false"
       />
-      <fieldset :disabled="locked" class="chapter-form">
-        <label
-          >章节标题<input v-model="draft.document.title" maxlength="300"
-        /></label>
-        <div v-show="!focusMode" class="chapter-context">
+      <div
+        class="chapter-content-layout"
+        :class="{ 'reading-other-chapter': referenceOpen && !focusMode }"
+      >
+        <fieldset :disabled="locked" class="chapter-form">
           <label
-            >故事位置<input
-              v-model.number="draft.document.story_time"
-              type="number"
-              min="0"
-              max="9007199254740991"
-              step="1"
+            >章节标题<input v-model="draft.document.title" maxlength="300"
           /></label>
+          <div v-show="!focusMode" class="chapter-context">
+            <label
+              >故事位置<input
+                v-model.number="draft.document.story_time"
+                type="number"
+                min="0"
+                max="9007199254740991"
+                step="1"
+            /></label>
+            <label
+              >知情视角<select v-model="draft.document.perspective">
+                <option value="">按小说叙事方式与场景安排</option>
+                <option
+                  v-for="entity in characters"
+                  :key="entity.id"
+                  :value="entity.id"
+                >
+                  {{ entity.name }} · {{ entity.id }}
+                </option>
+                <option
+                  v-if="
+                    draft.document.perspective &&
+                    !characters.some(
+                      (e) => e.id === draft!.document.perspective,
+                    )
+                  "
+                  :value="draft.document.perspective"
+                >
+                  原视角已不可用，请重新选择
+                </option>
+              </select></label
+            >
+          </div>
           <label
-            >知情视角<select v-model="draft.document.perspective">
-              <option value="">按小说叙事方式与场景安排</option>
-              <option
-                v-for="entity in characters"
-                :key="entity.id"
-                :value="entity.id"
-              >
-                {{ entity.name }} · {{ entity.id }}
-              </option>
-              <option
-                v-if="
-                  draft.document.perspective &&
-                  !characters.some((e) => e.id === draft!.document.perspective)
-                "
-                :value="draft.document.perspective"
-              >
-                原视角已不可用，请重新选择
-              </option>
-            </select></label
-          >
-        </div>
-        <label
-          >章节正文<textarea
-            ref="manuscriptField"
-            v-model="draft.document.text"
-            @select="selectQuote"
-            rows="24"
-            placeholder="可以先手写，也可以让 Agent 依据已确认细纲生成候选。"
-          />
-        </label>
-      </fieldset>
+            >章节正文<textarea
+              ref="manuscriptField"
+              v-model="draft.document.text"
+              @select="selectQuote"
+              rows="24"
+              placeholder="可以先手写，也可以让 Agent 依据已确认细纲生成候选。"
+            />
+          </label>
+        </fieldset>
+        <NovelChapterReference
+          v-if="referenceOpen"
+          v-show="!focusMode"
+          :book-id="book.id"
+          :chapter-id="chapterId"
+          :context="manualEditContext"
+          :disabled="locked || assistant || !!unconfirmedSave"
+          @instruction="addReferenceInstruction"
+          @close="referenceOpen = false"
+          @expired="emit('expired')"
+        />
+      </div>
       <div v-show="!focusMode" ref="refinementRegion">
         <NovelInlineRefinement
           ref="refinementEditor"
@@ -1394,10 +1451,25 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 .chapter-form {
+  min-width: 0;
   display: grid;
   gap: 1rem;
   border: 0;
   padding: 0;
+}
+.chapter-content-layout {
+  min-width: 0;
+}
+.chapter-content-layout.reading-other-chapter {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 1rem;
+}
+@media (max-width: 1000px) {
+  .chapter-content-layout.reading-other-chapter {
+    grid-template-columns: 1fr;
+  }
 }
 .chapter-form label {
   display: grid;

@@ -2,6 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
+import { createHash } from "node:crypto";
 import {
   chapterTextareaSelection,
   chapterSourceSelection,
@@ -21,7 +22,20 @@ async function fixture(
   initial = original,
   navigation = false,
   reviewOrigin = false,
+  referenceMode = false,
 ) {
+  const bookId = referenceMode ? "10".repeat(16) : "book";
+  const chapterId = referenceMode ? "20".repeat(16) : "chapter";
+  const controlId = referenceMode ? "30".repeat(16) : "control";
+  const previousId = "11".repeat(16),
+    nextId = "33".repeat(16);
+  let referenceText = "🌧林舟\r\n旧章伏笔，尚未揭晓。";
+  let referenceRevision = 1,
+    referenceStatus = 200,
+    holdReference = false;
+  let holdDirectory = false;
+  const hash = (text: string) =>
+    createHash("sha256").update(text).digest("hex");
   const vite = new URL(info.project.use.baseURL!).origin;
   const module = "/src/features/novel/NovelChapterEditor.vue";
   const compiled = await (await page.request.get(module)).text();
@@ -29,7 +43,7 @@ async function fixture(
   expect(vue).toBeTruthy();
   const document = {
     schema: 1,
-    chapter_id: "chapter",
+    chapter_id: chapterId,
     body_id: "body",
     title: "第一章",
     text: initial,
@@ -49,10 +63,10 @@ async function fixture(
   };
   let draft = {
     resource: {
-      id: "control",
+      id: controlId,
       branch_id: "branch",
       kind: "novel_chapter_control",
-      name: "章节工作稿 · chapter",
+      name: `章节工作稿 · ${chapterId}`,
       head: "",
       revision: 1,
     },
@@ -78,17 +92,76 @@ async function fixture(
   let lostSave: "before" | "after" | null = null;
   const waiting: (() => void)[] = [];
   const server = createServer(async (request, response) => {
-    const path = new URL(request.url!, "http://127.0.0.1").pathname;
+    const url = new URL(request.url!, "http://127.0.0.1");
+    const path = url.pathname;
     calls.push({ path, method: request.method! });
     const json = (value: unknown, status = 200) => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(value));
     };
-    if (path === "/api/novels/book/writing-batches/chapters")
+    if (path === `/api/novels/${bookId}/chapter-references`) {
+      if (holdDirectory) {
+        holdDirectory = false;
+        await new Promise<void>((resolve) => waiting.push(resolve));
+      }
+      return json({
+        book_id: bookId,
+        complete: true,
+        notes: ["仅为目录参考，不代表生成资格。"],
+        items: [previousId, chapterId, nextId].map((id, index) => ({
+          chapter_id: id,
+          control_id: index === 1 ? controlId : id,
+          title: ["旧城来信", "第一章", "后续安排"][index],
+          volume_id: "44".repeat(16),
+          volume: "旧城卷",
+          reason: "",
+        })),
+      });
+    }
+    if (path.startsWith(`/api/novels/${bookId}/chapter-references/`)) {
+      if (referenceStatus !== 200)
+        return json(
+          {
+            error:
+              referenceStatus === 403
+                ? "参考原文权限已撤销"
+                : "参考原文暂不可读",
+          },
+          referenceStatus,
+        );
+      const id = path.split("/").at(-1)!;
+      const source = url.searchParams.get("source");
+      const text =
+        source === "published"
+          ? "已采用稿：原来的旧城线索。"
+          : id === nextId
+            ? "后章原文，只有作者知道的安排。"
+            : referenceText;
+      const value = {
+        book_id: bookId,
+        chapter_id: id,
+        control_id: id,
+        source,
+        origin: source === "published" ? "published" : "private",
+        title: id === previousId ? "旧城来信" : "后续安排",
+        revision: referenceRevision,
+        source_hash: hash("document:" + text),
+        text_hash: hash(text),
+        characters: Array.from(text).length,
+        text,
+        reason: "当前写作依据仍需复核。",
+      };
+      if (holdReference) {
+        holdReference = false;
+        await new Promise<void>((resolve) => waiting.push(resolve));
+      }
+      return json(value);
+    }
+    if (path === `/api/novels/${bookId}/writing-batches/chapters`)
       return json(chapters, chaptersStatus);
-    if (path === "/api/novels/book/chapters" && request.method === "POST")
+    if (path === `/api/novels/${bookId}/chapters` && request.method === "POST")
       return json(draft.resource);
-    if (path === "/api/novels/book/chapters/control/draft") {
+    if (path === `/api/novels/${bookId}/chapters/${controlId}/draft`) {
       if (request.method === "PUT") {
         let body = "";
         for await (const chunk of request) body += chunk;
@@ -157,7 +230,7 @@ async function fixture(
   import Editor from ${JSON.stringify(vite + module)};
   import ${JSON.stringify(vite + "/src/style.css")};
   window.__chapterNavigations=[];
-  const app=createApp({render:()=>h(Editor,{book:{id:'book',project_id:'project',branch_id:'branch',setup:{title:'雾城',genre:'悬疑',chapter_min:2000,chapter_max:4000}},project:{id:'project',role:'owner'},actor:{id:'author',workspace_id:'workspace',role:'owner'},chapterId:'chapter',allowChapterNavigation:${navigation},reviewTarget:${reviewOrigin ? "{chapter_id:'chapter',control_id:'control',quote:'林舟'}" : "null"},onNavigate:(id)=>window.__chapterNavigations.push(id)})});app.mount('#app');window.__chapterEditApp=app;
+  const app=createApp({render:()=>h(Editor,{book:{id:${JSON.stringify(bookId)},project_id:'project',branch_id:'branch',setup:{title:'雾城',genre:'悬疑',chapter_min:2000,chapter_max:4000}},project:{id:'project',role:'owner'},actor:{id:'author',workspace_id:'workspace',role:'owner'},chapterId:${JSON.stringify(chapterId)},allowChapterNavigation:${navigation},reviewTarget:${reviewOrigin ? "{chapter_id:'chapter',control_id:'control',quote:'林舟'}" : "null"},onNavigate:(id)=>window.__chapterNavigations.push(id)})});app.mount('#app');window.__chapterEditApp=app;
   </script></body></html>`,
     }),
   );
@@ -165,7 +238,7 @@ async function fixture(
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const response = await page.request.fetch(
-      origin + new URL(request.url()).pathname,
+      origin + new URL(request.url()).pathname + new URL(request.url()).search,
       {
         method: request.method(),
         data: request.postDataBuffer() ?? undefined,
@@ -182,6 +255,22 @@ async function fixture(
     writes,
     calls,
     original: structuredClone(document),
+    previousId,
+    nextId,
+    referenceText: () => referenceText,
+    changeReference: (text: string) => {
+      referenceText = text;
+      referenceRevision++;
+    },
+    denyReference: (status: number) => {
+      referenceStatus = status;
+    },
+    holdReference: () => {
+      holdReference = true;
+    },
+    holdDirectory: () => {
+      holdDirectory = true;
+    },
     setChapters: (value: unknown, status = 200) => {
       chapters = value;
       chaptersStatus = status;
@@ -216,6 +305,246 @@ async function tools(page: Page) {
     .click();
   return page.getByRole("region", { name: "章内查找与替换", exact: true });
 }
+
+test("跨章参照保持本章编辑，精确CRLF选段经重核后带入原精修输入", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    expect(
+      state.calls.some((call) => call.path.includes("chapter-references")),
+    ).toBe(false);
+    await page
+      .getByRole("button", { name: "跨章原文参照", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "跨章原文参照",
+      exact: true,
+    });
+    await panel
+      .getByRole("button", { name: "参照上一章", exact: true })
+      .click();
+    const source = panel.getByLabel("参考章节原文", { exact: true });
+    await expect(source).toHaveValue(
+      state.referenceText().replace(/\r\n/g, "\n"),
+    );
+    await expect(panel).toContainText("当前作者已保存私人稿");
+    await page
+      .getByLabel("章节正文", { exact: true })
+      .fill(original + "\n作者继续补写。");
+    const notes = page.getByLabel("这次希望怎样修改", { exact: true });
+    await notes.fill("原有精修要求");
+    await source.evaluate((field: HTMLTextAreaElement) => {
+      field.setSelectionRange(2, 9);
+      field.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    await panel
+      .getByRole("button", { name: "将选段加入精修要求", exact: true })
+      .click();
+    await expect(notes).toHaveValue(
+      /原有精修要求[\s\S]*作者参考[\s\S]*林舟\n旧章伏笔/,
+    );
+    await expect(page.getByLabel("章节正文", { exact: true })).toHaveValue(
+      original + "\n作者继续补写。",
+    );
+    await expect.poll(() => state.writes.length).toBe(1);
+    expect(state.writes[0].text).toBe(original + "\n作者继续补写。");
+    expect(state.calls.filter((call) => call.method === "POST")).toHaveLength(
+      1,
+    );
+    expect(
+      state.calls.some((call) =>
+        /generate|writer|prepare|start/.test(call.path),
+      ),
+    ).toBe(false);
+    await page.screenshot({
+      path: info.outputPath("reference-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath("reference-mobile.png"),
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", { name: "进入专注写作", exact: true })
+      .click();
+    await expect(panel).toBeHidden();
+    await page
+      .getByRole("button", { name: "退出专注写作", exact: true })
+      .click();
+    await expect(source).toHaveValue(
+      state.referenceText().replace(/\r\n/g, "\n"),
+    );
+  } finally {
+    await state.close();
+  }
+});
+
+test("跨章参照区分正式来源，旧选段在来源变化或重核失败时不能带入", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page
+      .getByRole("button", { name: "跨章原文参照", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "跨章原文参照",
+      exact: true,
+    });
+    await panel
+      .getByRole("button", { name: "参照上一章", exact: true })
+      .click();
+    const source = panel.getByLabel("参考章节原文", { exact: true });
+    await expect(source).toBeVisible();
+    await source.evaluate((field: HTMLTextAreaElement) => {
+      field.setSelectionRange(2, 4);
+      field.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    state.changeReference("这章已经有另一版新原文。");
+    await panel
+      .getByRole("button", { name: "将选段加入精修要求", exact: true })
+      .click();
+    await expect(panel).toContainText("参考章已变化");
+    await expect(
+      page.getByLabel("这次希望怎样修改", { exact: true }),
+    ).toHaveValue("");
+    await panel.getByText("选择参考章节与来源", { exact: true }).click();
+    await panel
+      .getByLabel("参考正文来源", { exact: true })
+      .selectOption("published");
+    await panel
+      .getByRole("button", { name: "读取参考原文", exact: true })
+      .click();
+    await expect(source).toHaveValue("已采用稿：原来的旧城线索。");
+    await expect(panel).toContainText("已采用稿");
+    await source.evaluate((field: HTMLTextAreaElement) => {
+      field.setSelectionRange(0, 3);
+      field.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    state.denyReference(403);
+    await panel
+      .getByRole("button", { name: "将选段加入精修要求", exact: true })
+      .click();
+    await expect(source).toHaveCount(0);
+    await expect(panel).toContainText("参考原文权限已撤销");
+    await expect(page.getByLabel("章节正文", { exact: true })).toHaveValue(
+      original,
+    );
+    expect(state.writes).toHaveLength(0);
+  } finally {
+    await state.close();
+  }
+});
+
+test("跨章参照迟到结果不串章，过长引用及精修总容量不会覆盖输入", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    await page
+      .getByRole("button", { name: "跨章原文参照", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "跨章原文参照",
+      exact: true,
+    });
+    state.holdReference();
+    await panel
+      .getByRole("button", { name: "参照上一章", exact: true })
+      .click();
+    await expect
+      .poll(
+        () =>
+          state.calls.filter((call) => call.path.endsWith(state.previousId))
+            .length,
+      )
+      .toBe(1);
+    await panel
+      .getByLabel("参考章节", { exact: true })
+      .selectOption(state.nextId);
+    await panel
+      .getByRole("button", { name: "读取参考原文", exact: true })
+      .click();
+    const source = panel.getByLabel("参考章节原文", { exact: true });
+    await expect(source).toHaveValue("后章原文，只有作者知道的安排。");
+    state.release();
+    await expect(source).toHaveValue("后章原文，只有作者知道的安排。");
+    state.changeReference("长".repeat(1501));
+    await panel
+      .getByRole("button", { name: "参照上一章", exact: true })
+      .click();
+    await expect(source).toHaveValue("长".repeat(1501));
+    await source.evaluate((field: HTMLTextAreaElement) => {
+      field.select();
+      field.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    await expect(panel).toContainText("最多1500字");
+    await expect(
+      panel.getByRole("button", { name: "将选段加入精修要求", exact: true }),
+    ).toBeDisabled();
+    const notes = page.getByLabel("这次希望怎样修改", { exact: true });
+    await notes.fill("原".repeat(3950));
+    await source.evaluate((field: HTMLTextAreaElement) => {
+      field.setSelectionRange(0, 1);
+      field.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    await panel
+      .getByRole("button", { name: "将选段加入精修要求", exact: true })
+      .click();
+    await expect(notes).toHaveValue("原".repeat(3950));
+    await expect(
+      page.getByText("精修要求容量不足", { exact: false }),
+    ).toBeVisible();
+    expect(state.writes).toHaveLength(0);
+  } finally {
+    await state.close();
+  }
+});
+
+test("跨章参照慢目录返回不丢失手动回查的已移出章节", async ({ page }, info) => {
+  const state = await fixture(page, info, original, false, false, true);
+  try {
+    state.holdDirectory();
+    await page
+      .getByRole("button", { name: "跨章原文参照", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "跨章原文参照",
+      exact: true,
+    });
+    await panel.getByText("按准确章节编号回查", { exact: true }).click();
+    await panel
+      .getByLabel("准确章节编号", { exact: true })
+      .fill("77".repeat(16));
+    await panel
+      .getByRole("button", { name: "读取参考原文", exact: true })
+      .click();
+    const source = panel.getByLabel("参考章节原文", { exact: true });
+    await expect(source).toHaveValue(
+      state.referenceText().replace(/\r\n/g, "\n"),
+    );
+    state.release();
+    await expect(
+      panel.getByText("正在读取已有规划目录…", { exact: true }),
+    ).toHaveCount(0);
+    await expect(source).toHaveValue(
+      state.referenceText().replace(/\r\n/g, "\n"),
+    );
+    await expect(page.getByLabel("章节正文", { exact: true })).toHaveValue(
+      original,
+    );
+    expect(state.writes).toHaveLength(0);
+  } finally {
+    await state.close();
+  }
+});
 
 test("章节跳转遵从规划顺序，筛选标题且不自动保存或生成", async ({
   page,
