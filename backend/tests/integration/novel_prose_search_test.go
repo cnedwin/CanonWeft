@@ -49,6 +49,9 @@ func (b *proseSearchClient) request(method, path string, input any, want int) []
 	if want == 200 && method == "POST" && strings.Contains(path, "prose-search") && !strings.Contains(rec.Header().Get("Cache-Control"), "no-store") {
 		b.t.Fatal("query response lacks private no-store")
 	}
+	if strings.Contains(path, "chapter-references") && (!strings.Contains(rec.Header().Get("Cache-Control"), "no-store") || rec.Header().Get("X-Content-Type-Options") != "nosniff") {
+		b.t.Fatal("reference response lacks private no-store or nosniff")
+	}
 	return rec.Body.Bytes()
 }
 

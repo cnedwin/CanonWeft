@@ -157,30 +157,44 @@ func proseSearchUnavailable(err error) bool {
 }
 
 func (s *NovelChapters) proseSearchItemTx(ctx context.Context, tx *sql.Tx, a domain.Actor, book NovelBook, in NovelProseSearchInput, out *NovelProseSearchItem) error {
+	text, err := s.savedProseTx(ctx, tx, a, book, in.Source, out)
+	if err != nil {
+		return err
+	}
+	if out.Origin != "unavailable" {
+		out.Matches, out.TotalMatches = proseSearchMatches(text, in.Query)
+		out.Truncated = out.TotalMatches > len(out.Matches)
+	}
+	return nil
+}
+
+// Read one saved narrative under the caller's authority snapshot. Working
+// sources prefer this actor's draft; public fallbacks require the full release.
+func (s *NovelChapters) savedProseTx(ctx context.Context, tx *sql.Tx, a domain.Actor, book NovelBook, choice string, out *NovelProseSearchItem) (string, error) {
 	var head, hash string
 	var revision int64
 	if err := tx.QueryRowContext(ctx, "SELECT head_revision,content_hash,revision FROM resources WHERE id=? AND project_id=? AND branch_id=? AND kind='novel_chapter_control'", out.ControlID, book.ProjectID, book.BranchID).Scan(&head, &hash, &revision); err != nil {
-		return err
+		return "", err
 	}
 	var count int
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM resources WHERE project_id=? AND branch_id=? AND kind='novel_chapter_control' AND name=?", book.ProjectID, book.BranchID, chapterName("章节工作稿", out.ChapterID)).Scan(&count); err != nil {
-		return err
+		return "", err
 	}
 	if count != 1 {
-		return domain.ErrNotReady
+		return "", domain.ErrNotReady
 	}
 	private := false
-	if in.Source == "working" {
+	if choice == "working" {
 		var size int
 		var storedRevision int64
 		err := tx.QueryRowContext(ctx, "SELECT revision,OCTET_LENGTH(body) FROM resource_drafts WHERE resource_id=? AND actor_id=?", out.ControlID, a.ID).Scan(&storedRevision, &size)
 		if err != nil && err != sql.ErrNoRows {
-			return err
+			return "", err
 		}
 		if err == nil && storedRevision > 0 {
 			if size > proseSearchDocumentBytes {
 				out.Reason = "私人章稿超过本次单章读取容量，未截断查找。"
-				return nil
+				return "", nil
 			}
 			private = true
 		}
@@ -191,38 +205,36 @@ func (s *NovelChapters) proseSearchItemTx(ctx context.Context, tx *sql.Tx, a dom
 	} else {
 		if head == "" {
 			out.Reason = "尚无当前作者已保存的章稿或正式采用正文，未创建默认章稿。"
-			return nil
+			return "", nil
 		}
 		if err := s.validateProsePublishedTx(ctx, tx, book, out.ControlID, out.ChapterID, head, hash); err != nil {
-			return err
+			return "", err
 		}
 	}
 	chapter := NovelExportChapter{ID: out.ChapterID}
 	text, err := (&NovelExport{IP: s.IP}).chapterTx(ctx, tx, a, book, source, &chapter)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if chapter.ResourceID != out.ControlID {
-		return domain.ErrNotReady
+		return "", domain.ErrNotReady
 	}
 	out.ChapterTitle = chapter.Title
 	out.SourceHash = chapter.Hash
 	out.Revision = chapter.Revision
 	out.Reason = chapter.Warning
 	if !chapter.Included {
-		return nil
+		return "", nil
 	}
 	if !utf8.ValidString(text) {
-		return domain.ErrNotReady
+		return "", domain.ErrNotReady
 	}
 	out.Origin = "published"
 	if private {
 		out.Origin = "private"
 	}
 	out.Characters = utf8.RuneCountInString(text)
-	out.Matches, out.TotalMatches = proseSearchMatches(text, in.Query)
-	out.Truncated = out.TotalMatches > len(out.Matches)
-	return nil
+	return text, nil
 }
 
 // Check the actual immutable publication before using the shared exporter. It

@@ -13,6 +13,7 @@ func registerNovelChapters(g *echo.Group, workspace *service.Workspace, actor fu
 	ip := &service.IP{Workspace: workspace, Blobs: storage.LocalBlobs{Root: os.Getenv("STUDIO_BLOB_ROOT")}}
 	registerNovelExport(g, ip, actor)
 	svc := &service.NovelChapters{IP: ip}
+	registerNovelChapterReferences(g, svc, actor)
 	g.POST("/novels/:novel/prose-search", func(c *echo.Context) error {
 		var in service.NovelProseSearchInput
 		if err := decode(c, &in); err != nil {
