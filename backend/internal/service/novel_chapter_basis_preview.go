@@ -84,6 +84,7 @@ func (s *NovelChapters) basisPreviewTx(ctx context.Context, tx *sql.Tx, book Nov
 		out.Reason = "本章已有更新的正式版本，请先核对正式稿与私人稿，不能仅更新写作依据。"
 	} else {
 		updated := d
+		updated.Unplanned = false
 		updated.Detail, updated.SettingsRevision, updated.SettingsHash, updated.IPHead = planPin(target), check.settingsRevision, check.settingsHash, check.head
 		if err = s.validateDocumentTx(ctx, tx, book, updated); err != nil {
 			if !basisUnavailable(err) && !errors.Is(err, domain.ErrValidation) {
@@ -94,10 +95,12 @@ func (s *NovelChapters) basisPreviewTx(ctx context.Context, tx *sql.Tx, book Nov
 			out.CanRefresh = true
 		}
 	}
-	if d.Detail.BranchID != book.BranchID {
+	if !d.Unplanned && d.Detail.BranchID != book.BranchID {
 		return out, domain.ErrForbidden
 	}
-	if d.Detail == out.After.DetailRef && out.After.Detail != nil {
+	if d.Unplanned {
+		out.Limitations = append(out.Limitations, "导入私稿尚未绑定已确认细纲，原稿保留；请先在规划中使用本章编号建立细纲。")
+	} else if d.Detail == out.After.DetailRef && out.After.Detail != nil {
 		out.Before.Detail = out.After.Detail
 	} else {
 		old, e := s.basisDetailTx(ctx, tx, book, d)

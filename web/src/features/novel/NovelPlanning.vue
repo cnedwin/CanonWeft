@@ -9,6 +9,7 @@ import {
   type Project,
 } from "../../api";
 import type { NovelBook } from "./types";
+import { useBoundedReads } from "../../composables/useBoundedReads";
 import PlanningReadView from "./PlanningReadView.vue";
 import GenerationPanel from "../ip/GenerationPanel.vue";
 import type { Branch } from "../ip/types";
@@ -54,6 +55,13 @@ const accepted = ref(false),
 const error = ref(""),
   notice = ref("");
 const savedText = ref("");
+const existingChapterId = ref(""),
+  attachingChapter = ref(false);
+const chapterReads = useBoundedReads({
+  stopped: "已离开规划。",
+  timeout: "已有章稿核对超时，编号保留，可以重试。",
+});
+let chapterLookupSequence = 0;
 const savedBaseHead = ref("");
 const savedSources = ref("[]");
 const sources = ref<string[]>([]);
@@ -77,6 +85,7 @@ const dirty = computed(
 const locked = computed(
   () =>
     busy.value ||
+    attachingChapter.value ||
     !!candidate.value ||
     !!assistantBranch.value ||
     !canEdit.value,
@@ -92,6 +101,8 @@ let pending: Promise<void> | undefined;
 let operation = newOperationID();
 function fail(e: unknown) {
   error.value = message(e);
+  if (e instanceof APIError && [401, 403].includes(e.status))
+    ++chapterLookupSequence;
   if (e instanceof APIError && e.status === 401) emit("expired");
 }
 function queueSave() {
@@ -474,6 +485,62 @@ function addScene() {
       words: props.book.setup.chapter_min,
     });
 }
+async function attachExistingChapter() {
+  const id = existingChapterId.value.trim(),
+    current = draft.value;
+  if (locked.value || !current || current.document.kind !== "volume") return;
+  if (!/^[0-9a-f]{32}$/.test(id)) {
+    error.value = "请从已导入章节复制完整的章节编号。";
+    return;
+  }
+  if (current.document.chapters?.some((c) => c.id === id)) {
+    error.value = "本卷已经包含该章，不会重复添加。";
+    return;
+  }
+  const ticket = ++chapterLookupSequence,
+    resource = current.resource.id,
+    snapshot = documentText.value;
+  attachingChapter.value = true;
+  error.value = "";
+  try {
+    const value = await chapterReads.read<{
+      book_id: string;
+      chapter_id: string;
+      control_id: string;
+      title: string;
+    }>(`/novels/${props.book.id}/chapter-references/${id}?source=working`);
+    if (
+      disposed ||
+      ticket !== chapterLookupSequence ||
+      draft.value?.resource.id !== resource ||
+      documentText.value !== snapshot
+    )
+      return;
+    if (
+      value.book_id !== props.book.id ||
+      value.chapter_id !== id ||
+      !value.control_id
+    )
+      throw new Error("已有章稿身份不匹配，未加入规划。");
+    (current.document.chapters ??= []).push({
+      id,
+      title: value.title,
+      summary: "",
+      perspective: props.book.setup.perspective,
+      goal: "",
+      events: "",
+      change: "",
+      transition: "",
+    });
+    existingChapterId.value = "";
+    notice.value =
+      "已有章稿已加入本卷规划草稿；正文保留。补齐规划并确认细纲后，回到该章更新写作依据。";
+  } catch (e) {
+    if (!disposed && ticket === chapterLookupSequence) fail(e);
+  } finally {
+    if (!disposed) attachingChapter.value = false;
+  }
+}
 function move<T>(items: T[] | null, index: number, offset: number) {
   if (!items || index + offset < 0 || index + offset >= items.length) return;
   const [item] = items.splice(index, 1);
@@ -812,6 +879,22 @@ onBeforeUnmount(() => {
               </article>
               <button type="button" @click="addChapter">添加一章</button
               ><button type="button" @click="open('book')">返回全书安排</button>
+              <label
+                >已有章稿编号（从长稿导入记录复制）<input
+                  v-model="existingChapterId"
+                  maxlength="32"
+                  :disabled="locked"
+                  placeholder="粘贴32位章节编号"
+              /></label>
+              <button
+                type="button"
+                :disabled="locked || !existingChapterId"
+                @click="attachExistingChapter"
+              >
+                {{
+                  attachingChapter ? "正在核对章稿…" : "将已有章稿加入本卷草稿"
+                }}
+              </button>
             </template>
             <template v-if="draft.document.kind === 'detail'">
               <h3>场景与情节节拍</h3>

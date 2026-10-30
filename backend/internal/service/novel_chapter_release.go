@@ -187,6 +187,9 @@ func (s *NovelChapters) PrepareRelease(ctx context.Context, actor, bookID, chapt
 	if err != nil {
 		return domain.Release{}, err
 	}
+	if draft.Document.Unplanned {
+		return domain.Release{}, fmt.Errorf("%w：导入私稿请先确认规划并更新本章写作依据", domain.ErrConflict)
+	}
 	ledger, err := s.ledgerTx(ctx, tx, a, book, chapter)
 	if err != nil {
 		return domain.Release{}, err

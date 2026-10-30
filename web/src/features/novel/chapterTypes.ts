@@ -2,6 +2,7 @@ import type { DependencyRef } from "../ip/dependencies";
 import type { PlanResource } from "./planningTypes";
 
 export interface ChapterDocument {
+  unplanned?: boolean;
   references?: ChapterReference[];
   schema: number;
   chapter_id: string;

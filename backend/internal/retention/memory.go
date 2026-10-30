@@ -22,7 +22,13 @@ type memoryCheckpoint struct {
 // Memory JSON is a typed document, never an instruction or an ownership claim.
 // Check duplicate object keys before normal decoding, including nested sources.
 func memoryJSON(raw string, target any) error {
-	if len(raw) == 0 || len(raw) > 2<<20 || !utf8.ValidString(raw) {
+	return boundedTypedJSON(raw, target, 2<<20)
+}
+
+// Only dedicated typed contracts may opt into a larger limit. Ordinary memory,
+// execution and author documents keep their established two-MiB boundary.
+func boundedTypedJSON(raw string, target any, limit int) error {
+	if len(raw) == 0 || len(raw) > limit || !utf8.ValidString(raw) {
 		return ErrSourceOwnership
 	}
 	d := json.NewDecoder(bytes.NewBufferString(raw))

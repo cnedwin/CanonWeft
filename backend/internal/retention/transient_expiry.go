@@ -184,7 +184,7 @@ func TransientEvidence(row SourceRow, field string) (EvidenceSummary, error) {
 		}
 	case "source_imports.report":
 		var report retrieval.ImportReport
-		if authorDocument(raw, &report) != nil {
+		if sourceImportReportDocument(raw, &report) != nil {
 			return EvidenceSummary{}, ErrInvalidInventory
 		}
 		summary.ReportHash = stableHash(report)

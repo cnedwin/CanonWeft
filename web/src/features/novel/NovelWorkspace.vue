@@ -27,6 +27,7 @@ import NovelResearchDesk from "./NovelResearchDesk.vue";
 import NovelSourceReview from "./NovelSourceReview.vue";
 import NovelStoryLedger from "./NovelStoryLedger.vue";
 import NovelProseSearch from "./NovelProseSearch.vue";
+import NovelManuscriptDesk from "./NovelManuscriptDesk.vue";
 import {
   initialProseSearchView,
   type ProseSearchView,
@@ -64,6 +65,9 @@ const materials = ref(false);
 const planning = ref(false);
 const chapterId = ref("");
 const batch = ref(false);
+const manuscript = ref(false),
+  manuscriptBatchId = ref(""),
+  returnToManuscript = ref(false);
 const exporting = ref(false);
 const reviewing = ref(false);
 const designingCharacters = ref(false);
@@ -152,6 +156,7 @@ const onHome = computed(
     !reviewing.value &&
     !exporting.value &&
     !batch.value &&
+    !manuscript.value &&
     !planning.value &&
     !materials.value &&
     !settings.value &&
@@ -171,6 +176,7 @@ const ordinaryChapterNavigation = computed(
     !returnToBookReview.value &&
     !returnToStoryLedger.value &&
     !returnToProseSearch.value &&
+    !returnToManuscript.value &&
     !bookReviewTarget.value &&
     !storyLedgerTarget.value &&
     !proseSearchTarget.value &&
@@ -245,6 +251,12 @@ function chooseChapter(id: string) {
   ++chapterRequest;
 }
 function closeChapter() {
+  if (returnToManuscript.value) {
+    chapterId.value = "";
+    manuscript.value = true;
+    returnToManuscript.value = false;
+    return;
+  }
   if (changeSession.value) {
     chapterId.value = "";
     initialChapterAction.value = undefined;
@@ -588,17 +600,19 @@ onBeforeUnmount(() => {
       :search-target="proseSearchTarget"
       :resource-target="resourceTarget"
       :return-label="
-        changeSession
-          ? changeReturnLabel
-          : returnToProseSearch
-            ? '保存并返回正文查找'
-            : returnToStoryLedger
-              ? '保存并返回剧情账本'
-              : returnToBookReview
-                ? '保存并返回审稿报告'
-                : returnToReview
-                  ? '保存并返回待复核清单'
-                  : undefined
+        returnToManuscript
+          ? '保存并返回长稿导入'
+          : changeSession
+            ? changeReturnLabel
+            : returnToProseSearch
+              ? '保存并返回正文查找'
+              : returnToStoryLedger
+                ? '保存并返回剧情账本'
+                : returnToBookReview
+                  ? '保存并返回审稿报告'
+                  : returnToReview
+                    ? '保存并返回待复核清单'
+                    : undefined
       "
       ref="chapterEditor"
       @close="closeChapter"
@@ -648,6 +662,20 @@ onBeforeUnmount(() => {
       :actor="actor"
       @close="batch = false"
       @edit="chapterId = $event"
+      @expired="emit('expired')"
+    />
+    <NovelManuscriptDesk
+      v-else-if="manuscript"
+      :book="book"
+      :initial-batch-id="manuscriptBatchId"
+      :can-edit="canEdit"
+      @close="manuscript = false"
+      @selected="manuscriptBatchId = $event"
+      @edit="
+        manuscript = false;
+        returnToManuscript = true;
+        chapterId = $event;
+      "
       @expired="emit('expired')"
     />
     <NovelPlanning
@@ -766,6 +794,7 @@ onBeforeUnmount(() => {
           <button @click="planning = true">规划世界、大纲与细纲</button>
           <button @click="batch = true">快速连写 · 最多10章</button>
           <button @click="materials = true">管理本书资料</button>
+          <button @click="manuscript = true">长稿分章导入 / 续导</button>
         </div>
         <details class="tools-drawer">
           <summary>全部创作工具</summary>

@@ -204,12 +204,16 @@ func (s *IP) copyRecoveredAuthorMaterialTx(ctx context.Context, tx *sql.Tx, acto
 	if _, err := s.CopyRecoveryIPTx(ctx, tx, actor.ID, ipIDs); err != nil {
 		return &recoveryPhaseError{"人物与世界设定", err}
 	}
-	if err := s.copyRecoveryNovelsTx(ctx, tx, actor, ipIDs); err != nil {
+	novelIDs := map[string]string{}
+	if err := s.copyRecoveryNovelsTx(ctx, tx, actor, ipIDs, novelIDs); err != nil {
 		return &recoveryPhaseError{"小说与创作设置", err}
 	}
 	resources := RecoveryResourceIDs{RecoveryIPIDs: ipIDs, Resources: identities["resources"], Releases: identities["artifact_releases"], Imports: identities["source_imports"], Skills: methods.Packages}
 	if _, err := s.CopyRecoveryResourcesTx(ctx, tx, actor.ID, resources); err != nil {
 		return &recoveryPhaseError{"正文与资料", err}
+	}
+	if err := s.copyRecoveryManuscriptsTx(ctx, tx, actor, resources, novelIDs); err != nil {
+		return &recoveryPhaseError{"长稿导入记录", err}
 	}
 	graph, _, err := readRecoveryMemoryTx(ctx, tx, source)
 	if err != nil {
