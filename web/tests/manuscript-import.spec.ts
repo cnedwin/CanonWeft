@@ -336,6 +336,34 @@ test("长稿分章可调整、合并、换序，保存后从失败处续导且�
     await f.close();
   }
 });
+test("光标分章映射原始CRLF与完整Unicode字符，不按浏览器换行后的偏移截取", async ({
+  page,
+}, info) => {
+  const f = await fixture(page, info);
+  try {
+    await page.getByRole("button", { name: "读取正文与重复核对" }).click();
+    const area = page.getByRole("textbox", { name: "分章原文预览" });
+    await expect(area).toHaveValue(/旧城🌙/);
+    await area.evaluate((node: HTMLTextAreaElement) => {
+      const position = node.value.indexOf("来信");
+      node.setSelectionRange(position, position);
+      node.dispatchEvent(
+        new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }),
+      );
+    });
+    const expected = Array.from("第一章 雨夜\r\n旧城🌙").length;
+    await expect(
+      page.getByRole("spinbutton", { name: "分章位置" }),
+    ).toHaveValue(String(expected));
+    await page.getByRole("button", { name: "在此分为两章" }).click();
+    await page.getByRole("button", { name: "保存分章方案" }).click();
+    await expect.poll(() => f.batch.document.parts.length).toBe(4);
+    expect(f.batch.document.parts[0]!.end).toBe(expected);
+    expect(f.batch.document.parts[1]!.start).toBe(expected);
+  } finally {
+    await f.close();
+  }
+});
 test("恢复副本的旧分章只读，但仍可上传原稿建立新导入", async ({
   page,
 }, info) => {

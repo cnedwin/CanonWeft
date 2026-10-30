@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api, APIError, message, newOperationID } from "../../api";
 import { useBoundedReads } from "../../composables/useBoundedReads";
+import { chapterSourceSelection } from "./chapterTextTools";
 import type { NovelBook } from "./types";
 import type {
   ManuscriptBatch,
@@ -270,11 +271,17 @@ function split() {
   preview.value = null;
 }
 function cursor() {
-  if (textArea.value && preview.value)
+  if (!textArea.value || !preview.value) return;
+  try {
+    const position = textArea.value.selectionStart;
+    const raw = chapterSourceSelection(preview.value.text, position, position);
     splitAt.value =
       preview.value.start +
-      Array.from(textArea.value.value.slice(0, textArea.value.selectionStart))
-        .length;
+      Array.from(preview.value.text.slice(0, raw.start)).length;
+  } catch (cause) {
+    splitAt.value = null;
+    fail(cause);
+  }
 }
 function move(delta: number) {
   if (!part.value || frozen.value) return;
