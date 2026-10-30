@@ -427,6 +427,37 @@ textarea {
 .author-subpage input[type="radio"] {
   width: auto;
 }
+.task-browser {
+  min-width: 0;
+}
+.task-browser .section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.task-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+.task-toolbar label {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+}
+.task-toolbar button {
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+}
+.task-browser .generation-task,
+.task-browser .candidate-card,
+.task-browser .index-job {
+  overflow-wrap: anywhere;
+}
 @media (max-width: 600px) {
   .author-page-header {
     padding-top: 16px;

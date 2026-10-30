@@ -2,6 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
+import { openModelSettingsSection } from "./model-settings-helper";
 
 async function fixture(page: Page, info: TestInfo) {
   const component = "/src/features/models/ModelsPage.vue";
@@ -133,6 +134,7 @@ test("开写配置清单解释缺口、保留固定版本与草稿，定位不�
 }, info) => {
   const state = await fixture(page, info);
   try {
+    await openModelSettingsSection(page, "开写检查");
     const panel = page.getByRole("region", { name: "开写前配置检查" });
     await expect(panel).toBeVisible();
     await expect(panel).toContainText("模型联网已关闭");
@@ -144,6 +146,7 @@ test("开写配置清单解释缺口、保留固定版本与草稿，定位不�
     await expect(
       page.getByRole("heading", { name: "专业用途绑定", exact: true }),
     ).toBeInViewport();
+    await openModelSettingsSection(page, "模型与 Key");
     await page
       .getByRole("button", { name: "添加 DeepSeek", exact: true })
       .click();
@@ -162,6 +165,7 @@ test("开写配置清单解释缺口、保留固定版本与草稿，定位不�
     await page
       .getByRole("button", { name: "刷新模型配置", exact: true })
       .click();
+    await openModelSettingsSection(page, "开写检查");
     await expect(panel).toContainText("配置项完整");
     await expect(panel).toContainText("固定版本 1");
     await expect(panel).toContainText("当前版本 2");
@@ -189,6 +193,7 @@ test("开写配置清单解释缺口、保留固定版本与草稿，定位不�
     await page
       .getByRole("button", { name: "刷新模型配置", exact: true })
       .click();
+    await openModelSettingsSection(page, "模型与 Key");
     await expect(
       page.getByRole("button", { name: "添加 DeepSeek", exact: true }),
     ).toBeVisible();

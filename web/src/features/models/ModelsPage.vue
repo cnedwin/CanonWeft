@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { api, APIError, message } from "../../api";
 import { useModelReads } from "./modelReads";
 import ModelSetupChecklist from "./ModelSetupChecklist.vue";
@@ -9,6 +9,16 @@ import PricePanel from "./PricePanel.vue";
 import ReconciliationPanel from "./ReconciliationPanel.vue";
 const budgetPanel = ref<InstanceType<typeof BudgetPanel> | null>(null);
 const accountingBlocking = ref(false);
+const accountingAttention = ref({ count: 0, loaded: 0, hasMore: false });
+const activeSection = ref<SetupTarget | "checklist">("connections");
+const sections = [
+  { id: "connections", label: "模型与 Key" },
+  { id: "bindings", label: "专业用途" },
+  { id: "checklist", label: "开写检查" },
+  { id: "budget", label: "预算与账单" },
+  { id: "prices", label: "模型价格" },
+] as const;
+const keyInput = ref<HTMLInputElement | null>(null);
 
 interface Preset {
   id: string;
@@ -139,6 +149,7 @@ function preset(p: Preset) {
   };
   secret.value = "";
   clearKey.value = false;
+  void nextTick(() => keyInput.value?.focus());
 }
 function edit(c: Connection) {
   if (dirty.value || busy.value) return;
@@ -154,6 +165,7 @@ function edit(c: Connection) {
   };
   secret.value = "";
   clearKey.value = false;
+  void nextTick(() => keyInput.value?.focus());
 }
 function discard() {
   form.value = null;
@@ -200,8 +212,17 @@ function bindingName(b: Binding) {
   const c = settings.value.connections.find((c) => c.id === b.connection_id);
   return `${c?.name ?? "配置已不存在"} · 版本 ${b.connection_revision}${!c?.enabled ? " · 已停用" : c.revision !== b.connection_revision ? " · 固定旧版，请参照配置检查核对" : ""}`;
 }
-function locateSetup(target: SetupTarget) {
+async function locateSetup(target: SetupTarget) {
+  activeSection.value = target;
+  await nextTick();
   const element = document.getElementById(`model-setup-${target}`);
+  element?.focus({ preventScroll: true });
+  element?.scrollIntoView({ block: "start" });
+}
+async function locateAccounting() {
+  activeSection.value = "budget";
+  await nextTick();
+  const element = document.getElementById("model-setup-accounting");
   element?.focus({ preventScroll: true });
   element?.scrollIntoView({ block: "start" });
 }
@@ -213,38 +234,97 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="workspace">
-    <section class="intro">
+  <main class="workspace author-subpage">
+    <section class="intro author-page-header">
       <div>
         <p class="eyebrow">工作室设置</p>
         <h1>模型与用途</h1>
-        <p class="muted">
+        <p class="muted author-page-description">
           保存 Key 只做本地加密，不验证额度、不调用生成。付费调用默认关闭。
         </p>
       </div>
       <button
+        class="quiet"
         :disabled="busy || dirty || accountingBlocking"
         @click="emit('close')"
       >
         返回项目
       </button>
     </section>
-    <button type="button" :disabled="busy" @click="perform(refresh)">
+    <nav class="author-page-nav" aria-label="模型设置分区">
+      <button
+        v-for="section in sections"
+        :key="section.id"
+        type="button"
+        class="quiet"
+        :aria-pressed="activeSection === section.id"
+        @click="activeSection = section.id"
+      >
+        {{ section.label }}
+      </button>
+    </nav>
+    <button
+      type="button"
+      class="quiet"
+      :disabled="busy"
+      @click="perform(refresh)"
+    >
       刷新模型配置
     </button>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="notice" role="status" class="notice">{{ notice }}</p>
-    <p v-if="dirty" class="notice">有未保存的配置。请保存或放弃修改后切换。</p>
-    <ModelSetupChecklist
-      v-if="settings.setup"
-      :report="settings.setup"
-      :names="names"
-      :connections="settings.connections"
-      @locate="locateSetup"
-    />
-    <div class="layout">
+    <p v-if="dirty" class="author-status">
+      模型配置有未保存的修改，切换分区会保留输入。保存或放弃后才能切换服务商或返回项目。
+      <button
+        v-if="activeSection !== 'connections'"
+        type="button"
+        class="quiet"
+        @click="locateSetup('connections')"
+      >
+        返回配置草稿
+      </button>
+    </p>
+    <p v-if="accountingBlocking" class="author-status">
+      账单核对中有未完成的输入或操作。
+      <button
+        v-if="activeSection !== 'budget'"
+        type="button"
+        class="quiet"
+        @click="locateAccounting"
+      >
+        查看账单核对
+      </button>
+    </p>
+    <p v-if="accountingAttention.count" class="author-status" role="status">
+      已读取 {{ accountingAttention.loaded }} 条请求，其中
+      {{ accountingAttention.count }} 项结果未知，费用占用保留，不自动重发。
+      <span v-if="accountingAttention.hasMore">还有未读取的请求记录。</span>
+      <button type="button" class="quiet" @click="locateAccounting">
+        查看待核对账目
+      </button>
+    </p>
+    <div v-show="activeSection === 'checklist'" class="author-work-area">
+      <ModelSetupChecklist
+        v-if="settings.setup"
+        :report="settings.setup"
+        :names="names"
+        :connections="settings.connections"
+        @locate="locateSetup"
+      />
+      <section v-else class="panel">
+        <h2>开写前配置检查</h2>
+        <p class="muted">
+          当前尚无配置检查快照。可先录入模型与
+          Key，再刷新模型配置；旧版服务未提供检查时，其他设置仍可使用。
+        </p>
+      </section>
+    </div>
+    <div
+      v-show="activeSection === 'connections'"
+      class="layout author-work-area"
+    >
       <section id="model-setup-connections" class="panel" tabindex="-1">
-        <h2>服务商</h2>
+        <h2>选择服务商</h2>
         <p class="muted">
           预置型号来自官方目录，实际账户权限和生成质量仍需单独验证。可填写其他正式型号。
         </p>
@@ -252,6 +332,7 @@ onBeforeUnmount(() => {
           <button
             v-for="p in settings.catalog"
             :key="p.id"
+            class="quiet"
             :disabled="busy || dirty"
             @click="preset(p)"
           >
@@ -262,7 +343,12 @@ onBeforeUnmount(() => {
         <p v-if="!settings.connections.length">尚未保存模型配置。</p>
         <ul class="project-list">
           <li v-for="c in settings.connections" :key="c.id">
-            <button :disabled="busy || dirty" @click="edit(c)">
+            <button
+              class="quiet"
+              :aria-pressed="form?.id === c.id"
+              :disabled="busy || dirty"
+              @click="edit(c)"
+            >
               {{ c.name }} · {{ c.enabled ? "启用" : "停用" }} ·
               {{ c.has_key ? "已保存 Key" : "未填 Key" }}
             </button>
@@ -271,7 +357,9 @@ onBeforeUnmount(() => {
       </section>
       <section class="panel">
         <h2>{{ form?.id ? "编辑模型配置" : "添加模型配置" }}</h2>
-        <p v-if="!form" class="empty">选择左侧服务商开始配置。</p>
+        <p v-if="!form" class="empty">
+          选择服务商或已保存的配置，录入 Key 后保存。保存不会发起模型调用。
+        </p>
         <form
           v-else
           @submit.prevent="save"
@@ -282,6 +370,23 @@ onBeforeUnmount(() => {
             <label
               >配置名称<input v-model="form.name" required maxlength="120"
             /></label>
+            <label
+              >API Key<input
+                ref="keyInput"
+                v-model="secret"
+                type="password"
+                autocomplete="new-password"
+                :placeholder="
+                  form.has_key
+                    ? '已加密保存；留空保留原值'
+                    : '填写服务商 API Key'
+                "
+                maxlength="8192"
+            /></label>
+            <label v-if="form.has_key"
+              ><input v-model="clearKey" type="checkbox" />清除已保存的
+              Key</label
+            >
             <label
               >模型 ID<input v-model="form.model" required maxlength="160"
             /></label>
@@ -304,22 +409,6 @@ onBeforeUnmount(() => {
                   v-model="form.provider_workspace"
                   maxlength="100" /></label
             ></template>
-            <label
-              >API Key<input
-                v-model="secret"
-                type="password"
-                autocomplete="new-password"
-                :placeholder="
-                  form.has_key
-                    ? '已加密保存；留空保留原值'
-                    : '填写服务商 API Key'
-                "
-                maxlength="8192"
-            /></label>
-            <label v-if="form.has_key"
-              ><input v-model="clearKey" type="checkbox" />清除已保存的
-              Key</label
-            >
             <label
               ><input v-model="form.enabled" type="checkbox" />启用配置</label
             >
@@ -362,13 +451,20 @@ onBeforeUnmount(() => {
             </fieldset>
             <div class="actions">
               <button>保存模型配置</button
-              ><button type="button" @click="discard">放弃修改</button>
+              ><button type="button" class="quiet" @click="discard">
+                放弃修改
+              </button>
             </div>
           </fieldset>
         </form>
       </section>
     </div>
-    <section id="model-setup-bindings" class="panel" tabindex="-1">
+    <section
+      v-show="activeSection === 'bindings'"
+      id="model-setup-bindings"
+      class="panel author-work-area"
+      tabindex="-1"
+    >
       <h2>专业用途绑定</h2>
       <p class="muted">
         创作、记账、审查分别绑定；这里只选择模型，不代表对应 Agent
@@ -402,23 +498,30 @@ onBeforeUnmount(() => {
         </li>
       </ul>
     </section>
-    <BudgetPanel
-      id="model-setup-budget"
-      ref="budgetPanel"
-      tabindex="-1"
-      @expired="emit('expired')"
-    />
-    <ReconciliationPanel
-      @expired="emit('expired')"
-      @blocking="accountingBlocking = $event"
-      @recorded="budgetPanel?.refreshTotals()"
-    />
-    <PricePanel
-      id="model-setup-prices"
-      tabindex="-1"
-      :connections="settings.connections"
-      @expired="emit('expired')"
-    />
+    <div v-show="activeSection === 'budget'" class="author-work-area">
+      <BudgetPanel
+        id="model-setup-budget"
+        ref="budgetPanel"
+        tabindex="-1"
+        @expired="emit('expired')"
+      />
+      <ReconciliationPanel
+        id="model-setup-accounting"
+        tabindex="-1"
+        @expired="emit('expired')"
+        @blocking="accountingBlocking = $event"
+        @attention="accountingAttention = $event"
+        @recorded="budgetPanel?.refreshTotals()"
+      />
+    </div>
+    <div v-show="activeSection === 'prices'" class="author-work-area">
+      <PricePanel
+        id="model-setup-prices"
+        tabindex="-1"
+        :connections="settings.connections"
+        @expired="emit('expired')"
+      />
+    </div>
   </main>
 </template>
 <style scoped>

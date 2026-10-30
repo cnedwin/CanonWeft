@@ -1,5 +1,6 @@
 import { loginAsOwner } from "./owner-session";
 import { test, expect } from "@playwright/test";
+import { openModelSettingsSection } from "./model-settings-helper";
 
 test("五家模型预置、Key 不回显、用途绑定与停用持久保存", async ({ page }) => {
   await loginAsOwner(page);
@@ -16,6 +17,7 @@ test("五家模型预置、Key 不回显、用途绑定与停用持久保存", a
   await page.getByRole("button", { name: "保存模型配置", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("未发起模型调用");
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
+  await openModelSettingsSection(page, "专业用途");
   await page
     .getByLabel("使用的模型", { exact: true })
     .selectOption({ label: `${name} · deepseek-flash` });
@@ -35,6 +37,7 @@ test("五家模型预置、Key 不回显、用途绑定与停用持久保存", a
       exact: true,
     }),
   ).toBeVisible();
+  await openModelSettingsSection(page, "预算与账单");
   await expect(page.getByLabel("允许预算范围内的付费调用")).not.toBeChecked();
   await page.getByLabel("累计预算总额").fill("10.25");
   await page.getByLabel("单次请求上限").fill("0.50");

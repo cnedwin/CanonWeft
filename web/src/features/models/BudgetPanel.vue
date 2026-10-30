@@ -91,39 +91,78 @@ async function refreshTotals() {
 defineExpose({ refreshTotals });
 </script>
 <template>
-  <section class="panel">
-    <h2>调用预算</h2>
-    <p class="muted">
+  <section class="panel budget-panel" aria-label="调用预算">
+    <header class="section-heading">
+      <div>
+        <p class="eyebrow">工作室费用</p>
+        <h2>调用预算</h2>
+      </div>
+      <button
+        type="button"
+        class="quiet"
+        :disabled="busy"
+        @click="budget ? refreshTotals() : reloadBudget()"
+      >
+        {{ budget ? "刷新费用统计" : "重新加载预算" }}
+      </button>
+    </header>
+    <p class="author-page-description">
       工作室共用一份预算。请求发出前先占用预算；超时或结果未知时保留占用，不自动重发。此处保存不会充值或生成内容。
     </p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="notice" role="status" class="notice">{{ notice }}</p>
-    <button
-      type="button"
-      :disabled="busy"
-      @click="budget ? refreshTotals() : reloadBudget()"
-    >
-      {{ budget ? "刷新费用统计" : "重新加载预算" }}
-    </button>
-    <template v-if="budget"
-      ><p>
-        已记账 {{ display(budget.spent_micros) }} {{ budget.currency }} ·
-        请求占用 {{ display(budget.reserved_micros) }} {{ budget.currency }} ·
-        可用
-        {{
-          display(
-            Math.max(
-              0,
-              budget.limit_micros -
-                budget.spent_micros -
-                budget.reserved_micros,
-            ),
-          )
-        }}
-        {{ budget.currency }}
+    <template v-if="budget">
+      <div class="budget-saved-status">
+        <strong class="pill">{{
+          budget.enabled ? "付费调用已允许" : "付费调用已关闭"
+        }}</strong>
+        <span
+          >已保存总额 {{ display(budget.limit_micros) }} {{ budget.currency }} ·
+          单次上限 {{ display(budget.per_call_micros) }}
+          {{ budget.currency }}</span
+        >
+      </div>
+      <dl class="budget-summary" aria-label="已保存预算的费用统计">
+        <div>
+          <dt>已记账</dt>
+          <dd>
+            {{ display(budget.spent_micros) }}
+            <small>{{ budget.currency }}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>请求占用</dt>
+          <dd>
+            {{ display(budget.reserved_micros) }}
+            <small>{{ budget.currency }}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>当前可用</dt>
+          <dd>
+            {{
+              display(
+                Math.max(
+                  0,
+                  budget.limit_micros -
+                    budget.spent_micros -
+                    budget.reserved_micros,
+                ),
+              )
+            }}
+            <small>{{ budget.currency }}</small>
+          </dd>
+        </div>
+      </dl>
+      <p v-if="budget.reserved_micros > 0" class="budget-reservation-note">
+        请求占用尚未结算，结果未知时仍会保留。可在下方请求账目中按服务商账单核对。
       </p>
       <form @submit.prevent="save">
         <fieldset :disabled="busy">
+          <legend>编辑预算设置</legend>
+          <p class="budget-full muted">
+            下方为本页设置；保存后生效。刷新费用统计会保留你正在编辑的内容。
+          </p>
           <label
             >记账币种<select
               v-model="currency"
@@ -140,18 +179,99 @@ defineExpose({ refreshTotals });
           <label
             >单次请求上限<input v-model="perCall" inputmode="decimal" required
           /></label>
-          <label
+          <label class="budget-permission budget-full"
             ><input
               v-model="enabled"
               type="checkbox"
             />允许预算范围内的付费调用</label
           >
-          <p class="muted">
+          <p class="muted budget-full">
             关闭会阻止新的请求。已发出的请求仍可能计费。服务商最终账单与本地估算存在差异时，需按回执核对。
           </p>
-          <button>保存预算设置</button>
+          <div class="budget-full"><button>保存预算设置</button></div>
         </fieldset>
       </form>
     </template>
   </section>
 </template>
+<style scoped>
+.budget-saved-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: #5d6e63;
+  font-size: 13px;
+}
+.budget-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+.budget-summary > div {
+  padding: 18px;
+  border: 1px solid #e1e5da;
+  border-radius: 10px;
+  background: #f5f6ef;
+}
+.budget-summary dt {
+  color: #5d6e63;
+  font-size: 13px;
+}
+.budget-summary dd {
+  margin: 10px 0 0;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.budget-summary small {
+  font-size: 12px;
+  font-weight: 400;
+}
+.budget-reservation-note {
+  padding: 12px 16px;
+  border-left: 3px solid #b5a26b;
+  background: #f6f2e7;
+  font-size: 13px;
+}
+fieldset {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  border: 0;
+  border-top: 1px solid #e1e5da;
+  margin: 24px 0 0;
+  padding: 20px 0 0;
+  min-width: 0;
+}
+legend {
+  padding: 0 12px 0 0;
+  font-weight: 600;
+}
+.budget-full {
+  grid-column: 1 / -1;
+}
+.budget-full p,
+fieldset p {
+  margin: 0;
+}
+.budget-permission {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid #d7ded5;
+  border-radius: 8px;
+}
+.budget-permission input {
+  width: auto;
+  margin: 0;
+}
+@media (max-width: 680px) {
+  .budget-summary,
+  fieldset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>
